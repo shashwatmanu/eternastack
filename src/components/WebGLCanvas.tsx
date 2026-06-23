@@ -1583,7 +1583,7 @@ export default function WebGLCanvas({
 
             <GlitchSequenceController
               isMachineRevealed={isMachineRevealed}
-              setIsMachineRevealed={setIsMachineRevealed}
+              setIsMachineRevealed={setIsMachineRevealed ?? (() => { })}
               setGlitchActive={setGlitchActive}
               modelGlitchState={modelGlitchState}
               setModelGlitchState={setModelGlitchState}
