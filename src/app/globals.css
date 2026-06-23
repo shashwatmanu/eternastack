@@ -1,26 +1,154 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #010A15;
+  --foreground: #f4f4f5;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #010A15;
+  color: #f4f4f5;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: var(--font-outfit), sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-playfair), serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+
+/* Custom thin scrollbar for smooth visual aesthetic */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #070707;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e1e24;
+  border-radius: 4px;
+  transition: background 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00F0FF;
+}
+
+/* Neon text selection highlight */
+::selection {
+  background: rgba(0, 240, 255, 0.15);
+  color: #00F0FF;
+}
+
+/* Utility to hide scrollbars on console display window */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Thin green scrollbar for Engine Room log terminal */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 102, 0.12);
+  border-radius: 1px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 102, 0.3);
+}
+
+/* Scroll Timeline Sidebar styling */
+.scroll-timeline-container {
+  position: fixed;
+  right: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  z-index: 40;
+}
+
+.scroll-timeline-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(63, 63, 70, 0.25);
+  z-index: -1;
+}
+
+.scroll-timeline-node {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #09090b;
+  border: 1px solid #27272a;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.scroll-timeline-node.active {
+  background: #00F0FF;
+  border-color: #00F0FF;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+}
+
+.scroll-timeline-label {
+  position: absolute;
+  right: 1.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 7px;
+  letter-spacing: 0.25em;
+  color: #3f3f46;
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.scroll-timeline-node:hover .scroll-timeline-label,
+.scroll-timeline-node.active .scroll-timeline-label {
+  opacity: 1;
+  color: #00F0FF;
+}
+
+/* Sound Wave bars animation for interactive Speaker toggle */
+@keyframes soundwave {
+  0%, 100% { height: 3px; }
+  50% { height: 14px; }
+}
+
+.soundwave-bar {
+  width: 2px;
+  background-color: #00F0FF;
+  margin: 0 1px;
+  border-radius: 1px;
+  transition: height 0.25s ease;
+}
+
+.soundwave-bar:nth-child(1) { animation: soundwave 0.8s ease infinite; }
+.soundwave-bar:nth-child(2) { animation: soundwave 1.2s ease infinite 0.2s; }
+.soundwave-bar:nth-child(3) { animation: soundwave 0.6s ease infinite 0.4s; }
+.soundwave-bar:nth-child(4) { animation: soundwave 1.0s ease infinite 0.1s; }
+
+.soundwave-bar.muted {
+  animation: none !important;
+  height: 3px !important;
+  background-color: #52525b !important;
 }

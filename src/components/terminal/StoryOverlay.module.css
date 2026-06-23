@@ -1,0 +1,118 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 5vw;
+  transition: opacity 0.5s ease-out;
+}
+
+.overlay.hidden {
+  opacity: 0;
+}
+
+/* Micro-Data Typography */
+.microDataTopLeft,
+.microDataBottomLeft,
+.microDataBottomRight {
+  position: absolute;
+  font-family: monospace;
+  font-size: 0.65rem;
+  color: #4a4a4a;
+  letter-spacing: 0.15em;
+}
+
+.microDataTopLeft {
+  top: 3vh;
+  left: 3vw;
+}
+
+.microDataBottomLeft {
+  bottom: 3vh;
+  left: 3vw;
+}
+
+.microDataBottomRight {
+  bottom: 3vh;
+  right: 3vw;
+}
+
+.storyBlock {
+  width: 30vw;
+  max-width: 400px;
+  color: #ffffff;
+  font-family: 'Inter', sans-serif; /* Premium modern font */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+  position: absolute;
+}
+
+.storyBlock.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.storyBlock.left {
+  left: 5vw;
+  text-align: left;
+}
+
+.storyBlock.right {
+  right: 5vw;
+  text-align: right;
+}
+
+.eyebrow {
+  font-family: monospace;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #ffb84d; /* Golden color to match the aura */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.left .eyebrow::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 1px;
+  background-color: #ffb84d;
+}
+
+.right .eyebrow::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 1px;
+  background-color: #ffb84d;
+}
+.right .eyebrow {
+  justify-content: flex-end;
+}
+
+.title {
+  font-size: 2.5rem;
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.body {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #a0a0a0;
+  font-weight: 400;
+}
