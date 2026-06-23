@@ -19,6 +19,14 @@ export const metadata: Metadata = {
     "An immersive cinematic agency portfolio displaying senior full-stack development, WebGL 3D spline-rail environments, and real-time synthesized Web Audio.",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#010A15",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{

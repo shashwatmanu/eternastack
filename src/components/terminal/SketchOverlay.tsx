@@ -92,7 +92,7 @@ export default function SketchOverlay({ progress }: SketchOverlayProps) {
           <path
             ref={circleRef}
             className={styles.path}
-            d="M 1600 460 C 1820 440, 1880 490, 1820 530 C 1720 570, 1360 550, 1380 490 C 1400 450, 1500 450, 1620 465"
+            d="M 1600 435 C 1840 413, 1895 465, 1830 507 C 1720 550, 1240 533, 1255 467 C 1268 423, 1400 420, 1620 437"
           />
         </g>
         

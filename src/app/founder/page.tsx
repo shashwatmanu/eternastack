@@ -41,7 +41,7 @@ export default function TerminalPage() {
 
 
 
-  // Virtual Scroll setup (Wheel Hijack)
+  // Virtual Scroll setup (Wheel Hijack + Touch Drag)
   useEffect(() => {
     // Stop all audio from previous pages (including space transition)
     audio.stopSFX('face');
@@ -57,6 +57,7 @@ export default function TerminalPage() {
 
     let targetProgress = progress;
     let animationFrameId: number;
+    let touchStartY = 0;
 
     const preventNativeScroll = (e: Event) => {
       e.preventDefault();
@@ -76,6 +77,21 @@ export default function TerminalPage() {
       targetProgress = scrollAccumulator.current;
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartY = e.touches[0].clientY;
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const deltaY = touchStartY - e.touches[0].clientY;
+      touchStartY = e.touches[0].clientY;
+
+      // Scale touch delta to match wheel sensitivity
+      scrollAccumulator.current += deltaY * 0.003;
+      scrollAccumulator.current = Math.max(0, Math.min(1.05, scrollAccumulator.current));
+      targetProgress = scrollAccumulator.current;
+    };
+
     const lerpLoop = () => {
       setProgress((prev) => {
         const diff = targetProgress - prev;
@@ -87,12 +103,14 @@ export default function TerminalPage() {
 
     // Must be non-passive to allow preventDefault
     window.addEventListener("wheel", handleWheel, { passive: false });
-    window.addEventListener("touchmove", preventNativeScroll, { passive: false });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
     lerpLoop();
 
     return () => {
       window.removeEventListener("wheel", handleWheel);
-      window.removeEventListener("touchmove", preventNativeScroll);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
       cancelAnimationFrame(animationFrameId);
       document.body.style.overscrollBehavior = '';
       document.body.style.touchAction = '';
@@ -115,7 +133,7 @@ export default function TerminalPage() {
       {/* Back Button */}
       <button 
         onClick={() => router.push('/?tech=true')}
-        className="fixed top-24 left-8 z-[60] px-4 py-2 text-[10px] tracking-widest text-zinc-500 hover:text-white border border-zinc-800 hover:border-zinc-500 bg-black/50 backdrop-blur-md rounded-full uppercase transition-all duration-300"
+        className="fixed top-6 left-4 md:top-24 md:left-8 z-[60] px-3 py-1.5 md:px-4 md:py-2 text-[9px] md:text-[10px] tracking-widest text-zinc-500 hover:text-white border border-zinc-800 hover:border-zinc-500 bg-black/50 backdrop-blur-md rounded-full uppercase transition-all duration-300"
       >
         ← RETURN
       </button>

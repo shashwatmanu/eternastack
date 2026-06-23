@@ -44,13 +44,12 @@
 }
 
 .storyBlock {
-  width: 30vw;
-  max-width: 400px;
+  width: clamp(280px, 30vw, 400px);
   color: #ffffff;
-  font-family: 'Inter', sans-serif; /* Premium modern font */
+  font-family: 'Inter', sans-serif;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -71,6 +70,40 @@
 .storyBlock.right {
   right: 5vw;
   text-align: right;
+}
+
+/* ─── Mobile overrides ─── */
+@media (max-width: 768px) {
+  .storyBlock {
+    width: 88vw;
+    position: absolute;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) translateY(20px);
+    text-align: center !important;
+    gap: 10px;
+  }
+
+  .storyBlock.visible {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .storyBlock.left {
+    top: 12vh;
+  }
+
+  .storyBlock.right {
+    top: 12vh;
+  }
+
+  .left .eyebrow::before,
+  .right .eyebrow::after {
+    display: none;
+  }
+
+  .right .eyebrow {
+    justify-content: center;
+  }
 }
 
 .eyebrow {
@@ -104,15 +137,32 @@
 }
 
 .title {
-  font-size: 2.5rem;
+  font-size: clamp(1.6rem, 4vw, 2.5rem);
   font-weight: 300;
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
 
 .body {
-  font-size: 0.95rem;
+  font-size: clamp(0.8rem, 2vw, 0.95rem);
   line-height: 1.6;
   color: #a0a0a0;
   font-weight: 400;
+  margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: clamp(1.4rem, 7vw, 2rem);
+  }
+
+  .body {
+    font-size: 0.85rem;
+    margin-top: 6px;
+  }
+
+  .eyebrow {
+    font-size: 0.65rem;
+    justify-content: center;
+  }
 }

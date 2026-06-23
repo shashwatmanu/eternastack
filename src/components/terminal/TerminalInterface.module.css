@@ -6,8 +6,8 @@
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.8);
   width: 100%;
   max-width: 800px;
-  height: 60vh;
-  min-height: 400px;
+  height: clamp(300px, 60vh, 600px);
+  min-height: 280px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -69,9 +69,10 @@
 
 .line {
   color: #0f0;
-  font-size: 1rem;
+  font-size: clamp(0.7rem, 2.5vw, 1rem);
   line-height: 1.5;
   text-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+  word-break: break-word;
 }
 
 .line::before {

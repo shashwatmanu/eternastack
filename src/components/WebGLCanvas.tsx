@@ -1222,6 +1222,19 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
   );
 }
 
+// Dynamically adjusts camera FOV for mobile portrait viewports
+function MobileCamera() {
+  const { camera, viewport } = useThree();
+  useEffect(() => {
+    const isMobile = viewport.aspect < 0.85;
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.fov = isMobile ? 75 : 50;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, viewport.aspect]);
+  return null;
+}
+
 function PipelineAssets({
   strikeActive,
   isMachineRevealed = false,
@@ -1239,6 +1252,10 @@ function PipelineAssets({
   const light1Ref = useRef<THREE.PointLight>(null);
   const light2Ref = useRef<THREE.PointLight>(null);
   const light3Ref = useRef<THREE.PointLight>(null);
+
+  // Detect mobile / portrait viewport from the Three.js viewport size
+  const { viewport } = useThree();
+  const isMobile = viewport.aspect < 0.85;
 
   const progress = scrollState.dampedProgress;
   const activeSlide = progress < 0.15 ? 1 : (progress < 0.348 ? 2 : 3);
@@ -1292,15 +1309,15 @@ function PipelineAssets({
         <WebGLHeroText
           label="PROLOGUE // THE SURFACE LAYER"
           line1A={showStage1Tech ? "AUTONOMOUS" : "WEIGHTLESS"}
-          line1B={showStage1Tech ? "RECON." : "FRONTEND."}
-          line2={showStage1Tech ? "deploying lightweight frontends from above." : "weaving digital stories that fly."}
-          position={[-3.5, 0.4, -1.0]} // Shifted left to accommodate massive text
+          line1B={showStage1Tech ? "DELIVERY." : "FRONTENDS."}
+          line2={showStage1Tech ? "Scaling cross-platform ecosystems from concept to production." : "Engineering frictionless, high-fidelity web experiences."}
+          position={isMobile ? [0, -0.8, -1.0] : [-3.5, 0.4, -1.0]}
           activeRange={[-0.1, 0.0, 0.10, 0.20]}
-          align="left"
+          align={isMobile ? "center" : "left"}
           animationType="flyUp"
           sectionIndex={0}
-          fontSize1={0.70} // Massive Awwwards scale
-          fontSize2={0.25}
+          fontSize1={isMobile ? 0.38 : 0.70}
+          fontSize2={isMobile ? 0.16 : 0.25}
           isMachine={showStage1Tech}
         />
       </group>
@@ -1315,16 +1332,16 @@ function PipelineAssets({
         )}
         <WebGLHeroText
           label="INTERLUDE // SYSTEM TRANSIT"
-          line1A={showStage2Tech ? "DATA" : "ALGORITHMIC"}
-          line1B={showStage2Tech ? "EXCAVATION." : "PIPELINES."}
-          line2={showStage2Tech ? "engineered to process massive systemic weight." : "built to carry immense data weight."}
-          position={[-3.5, -0.9, -1.5]} // Shifted left to balance the ant and massive text
+          line1A={showStage2Tech ? "INTELLIGENT" : "IMMENSE"}
+          line1B={showStage2Tech ? "AUTOMATION." : "CAPACITY."}
+          line2={showStage2Tech ? "Deep learning models optimize system metrics." : "Robust architectures built to handle heavy data weight."}
+          position={isMobile ? [0, -1.6, -1.5] : [-3.5, -0.9, -1.5]}
           activeRange={[0.10, 0.20, 1.0, 1.0]}
-          align="left"
+          align={isMobile ? "center" : "left"}
           animationType="sinkDown"
           sectionIndex={1}
-          fontSize1={0.70} // Massive scale
-          fontSize2={0.25}
+          fontSize1={isMobile ? 0.38 : 0.70}
+          fontSize2={isMobile ? 0.16 : 0.25}
           isMachine={showStage2Tech}
         />
       </group>
@@ -1346,16 +1363,16 @@ function PipelineAssets({
 
         <WebGLHeroText
           label="DEEP CAVERN // CORE ENGINE"
-          line1A={isMachineRevealed ? "INFRASTRUCTURE" : "IRONCLAD"}
-          line1B={isMachineRevealed ? "COVERT." : "ECOSYSTEMS."}
-          line2={isMachineRevealed ? "architecting absolute security in the shadows." : "weaving complex backends in the dark."}
-          position={[-1.5, -2.5, -0.5]} // Shifted further right and lower to fit perfectly within the final camera lookAt
-          activeRange={[0.348, 0.408, 1.0, 1.0]} // Never exit, stays visible through the footer
-          align="left"
+          line1A={isMachineRevealed ? "IRONCLAD" : "COMPLEX"}
+          line1B={isMachineRevealed ? "SECURITY." : "NETWORKS."}
+          line2={isMachineRevealed ? "Enterprise-grade system protection." : "Weaving intricate backend logic securely in the dark"}
+          position={isMobile ? [0, -3.8, -0.5] : [-1.5, -2.5, -0.5]}
+          activeRange={[0.348, 0.408, 1.0, 1.0]}
+          align={isMobile ? "center" : "left"}
           animationType="materialize"
           sectionIndex={2}
-          fontSize1={0.45} // Scale adjusted so it stays safely in frame
-          fontSize2={0.20}
+          fontSize1={isMobile ? 0.32 : 0.45}
+          fontSize2={isMobile ? 0.14 : 0.20}
           isMachine={isMachineRevealed}
         />
 
@@ -1569,6 +1586,7 @@ export default function WebGLCanvas({
             <DynamicEnvironment />
             <EnvironmentalPipeline isAscending={isAscending} />
             <SpaceBackground isAscending={isAscending} />
+            <MobileCamera />
             <CameraRail
               isAscending={isAscending}
               terminalReady={terminalReady}

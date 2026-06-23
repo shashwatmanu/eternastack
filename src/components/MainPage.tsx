@@ -65,7 +65,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
   const [finalZoomComplete, setFinalZoomComplete] = useState(false);
   const [spaceReady, setSpaceReady] = useState(false);
   const [isIdle, setIsIdle] = useState(false);
-  
+
   const router = useRouter();
 
   // RAG Interactive Search States
@@ -119,7 +119,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
     if (!isBooted) return;
     let idleTimer: NodeJS.Timeout;
     let hideTimer: NodeJS.Timeout;
-    
+
     const scheduleIdle = () => {
       idleTimer = setTimeout(() => {
         setIsIdle(true);
@@ -138,7 +138,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
     };
 
     window.addEventListener('scroll', resetActivity, { passive: true });
-    
+
     scheduleIdle();
 
     return () => {
@@ -181,7 +181,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
     const sync = () => {
       const dp = scrollState.dampedProgress;
       const sp = scrollState.speed;
-      
+
       const newStageKey = dp < 0.15 ? "sky" : (dp < 0.348 ? "ground" : "cavern");
       if (newStageKey !== stageKeyRef.current) {
         stageKeyRef.current = newStageKey;
@@ -381,7 +381,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
                 transition={{ repeat: Infinity, duration: 2, delay: 0.5, ease: "easeInOut" }}
                 className="text-[12px] tracking-[0.4em] font-sans font-bold uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,1)] drop-shadow-[0_0_10px_rgba(0,0,0,0.9)]"
               >
-                ASCENT
+                ASCEND
               </motion.div>
             </button>
           </motion.div>
@@ -411,7 +411,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
               }}
               className="w-12 h-12 rounded-full bg-white/20 border border-white/50 shadow-[0_0_20px_rgba(0,0,0,0.6)] backdrop-blur-md"
             />
-            <motion.span 
+            <motion.span
               animate={{ opacity: [0, 1, 0] }}
               transition={{
                 duration: 2.5,
@@ -438,14 +438,14 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
             exit={{ opacity: 0 }}
             className="fixed bottom-8 right-8 z-40 flex flex-col items-center opacity-90"
           >
-            <div 
+            <div
               className="flex flex-col -space-y-2 cursor-pointer hover:scale-110 transition-transform duration-300"
               onClick={() => {
                 setIsIdle(false);
                 const maxScroll = document.body.scrollHeight - window.innerHeight;
                 const current = scrollState.progress;
                 const checkpoints = [0, 0.25, 0.50, 0.65];
-                
+
                 if (scrollDirection === "down") {
                   const next = checkpoints.find(cp => cp > current + 0.05);
                   if (next !== undefined) {
@@ -487,10 +487,10 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
       </AnimatePresence>
 
       {/* Fixed WebGL Canvas ALWAYS renders to trigger asset loading in background */}
-      <WebGLCanvas 
-        strikeActive={strikeActive} 
-        isMachineRevealed={isMachineRevealed} 
-        setIsMachineRevealed={setIsMachineRevealed} 
+      <WebGLCanvas
+        strikeActive={strikeActive}
+        isMachineRevealed={isMachineRevealed}
+        setIsMachineRevealed={setIsMachineRevealed}
         isAscending={isAscending}
         terminalReady={terminalReady}
         onTerminalReady={() => setTerminalReady(true)}
@@ -501,7 +501,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
       {/* Viewport and Content Grid with expanded depth for a tight, polished scroll experience */}
       {isBooted && (
         <div ref={containerRef} className="relative h-[240vh] w-full z-20 pointer-events-none">
-          
+
           {/* Rigid Background Grid Lines Overlay */}
           <div className="fixed inset-0 grid grid-cols-12 pointer-events-none z-10 opacity-15">
             {[...Array(11)].map((_, i) => (
@@ -515,11 +515,11 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
           </div>
 
           {/* Fixed Top Header Bar */}
-          <div className="fixed top-0 left-0 w-full z-30 pointer-events-auto bg-[#010A15]/40 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.5)] border-b border-white/10 grid grid-cols-12 text-[10px] tracking-[0.25em] p-4 text-white/50 font-sans uppercase transition-colors duration-500 hover:bg-[#010A15]/60">
-            <div className="col-span-4 font-bold text-white tracking-widest flex items-center">
+          <div className="fixed top-0 left-0 w-full z-30 pointer-events-auto bg-[#010A15]/40 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.5)] border-b border-white/10 flex items-center justify-between text-[10px] tracking-[0.25em] px-4 md:px-6 py-4 text-white/50 font-sans uppercase transition-colors duration-500 hover:bg-[#010A15]/60">
+            <div className="font-bold text-white tracking-widest flex items-center text-[9px] md:text-[10px] truncate max-w-[45vw] md:max-w-none">
               SHASHWAT MANU // NARRATIVE LABS
             </div>
-            <div className="col-span-4 text-center hidden md:flex items-center justify-center gap-4">
+            <div className="hidden md:flex items-center justify-center gap-4">
               <span>MODEL: {isMachineRevealed ? "SPY_DRONE_SUBSTRUCTURE" : "ARACHNID_SUBSTRUCTURE"}</span>
               <button
                 onClick={handleToggleMute}
@@ -532,13 +532,26 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
                 <div className={`soundwave-bar ${audioMuted ? "muted" : ""}`} />
               </button>
             </div>
-            <div ref={depthCoordsRef} className="col-span-8 md:col-span-4 text-right flex items-center justify-end">
-              DEPTH COORDINATES: 0%
+            <div className="flex items-center gap-3">
+              {/* Mobile mute button */}
+              <button
+                onClick={handleToggleMute}
+                className="md:hidden flex items-end h-3 px-1 cursor-pointer outline-none hover:text-white transition-colors"
+                title={audioMuted ? "Unmute sound" : "Mute sound"}
+              >
+                <div className={`soundwave-bar ${audioMuted ? "muted" : ""}`} />
+                <div className={`soundwave-bar ${audioMuted ? "muted" : ""}`} />
+                <div className={`soundwave-bar ${audioMuted ? "muted" : ""}`} />
+                <div className={`soundwave-bar ${audioMuted ? "muted" : ""}`} />
+              </button>
+              <div ref={depthCoordsRef} className="text-right text-[9px] md:text-[10px]">
+                DEPTH: 0%
+              </div>
             </div>
           </div>
 
           {/* Fixed Sub-Header Bar (Cross-fading section details) */}
-          <div className="fixed top-14 left-0 w-full z-30 pointer-events-none px-8 md:px-16 py-4">
+          <div className="fixed top-14 left-0 w-full z-30 pointer-events-none px-4 md:px-16 py-4">
             <div className="border-b border-white/5 pb-4 w-full overflow-hidden">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -547,27 +560,27 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 4 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="grid grid-cols-12 text-[10px] tracking-[0.25em] text-white/40 font-sans uppercase w-full"
+                  className="flex justify-between text-[8px] md:text-[10px] tracking-[0.2em] md:tracking-[0.25em] text-white/40 font-sans uppercase w-full"
                 >
                   {stageKey === "sky" && (
                     <>
-                      <div className="col-span-6 md:col-span-4">SEC_01 // THE ATMOSPHERE // SKY LEVEL</div>
-                      <div className="col-span-4 text-center hidden md:block">LOC: [HIGH-ALTITUDE ORBIT]</div>
-                      <div className="col-span-6 md:col-span-4 text-right">STAGE: CHROME_FRONTEND</div>
+                      <div className="truncate">SEC_01 // SKY</div>
+                      <div className="hidden md:block text-center">LOC: [HIGH-ALTITUDE ORBIT]</div>
+                      <div>CHROME_FRONTEND</div>
                     </>
                   )}
                   {stageKey === "ground" && (
                     <>
-                      <div className="col-span-6 md:col-span-4">SEC_02 // SYSTEM GRID // GROUND LEVEL</div>
-                      <div className="col-span-4 text-center hidden md:block">LOC: [SYSTEM PATHS]</div>
-                      <div className="col-span-6 md:col-span-4 text-right">STAGE: TECH_FLOW</div>
+                      <div className="truncate">SEC_02 // GROUND</div>
+                      <div className="hidden md:block text-center">LOC: [SYSTEM PATHS]</div>
+                      <div>TECH_FLOW</div>
                     </>
                   )}
                   {stageKey === "cavern" && (
                     <>
-                      <div className="col-span-6 md:col-span-4">SEC_03 // CORE ENGINE // SUBTERRANEAN CAVERN</div>
-                      <div className="col-span-4 text-center hidden md:block">LOC: [CAVERN DEPTHS]</div>
-                      <div className="col-span-6 md:col-span-4 text-right">STAGE: SUBTERRANEAN_CAVERN</div>
+                      <div className="truncate">SEC_03 // CAVERN</div>
+                      <div className="hidden md:block text-center">LOC: [CAVERN DEPTHS]</div>
+                      <div>SUBTERRANEAN</div>
                     </>
                   )}
                 </motion.div>
@@ -577,7 +590,7 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
 
           {/* Fixed viewport window containing sliding panels */}
           <div className="fixed inset-0 w-full h-full overflow-hidden pt-14" style={{ zIndex: 10 }}>
-            
+
             {/* Sliding panels with elastic scroll warp */}
             <div
               ref={warpContainerRef}
@@ -638,27 +651,27 @@ export default function MainPage({ isTech = false }: { isTech?: boolean }) {
               </div>
 
               {/* FOOTER (240vh max translate) */}
-              <div className="h-[40vh] w-full flex flex-col justify-end p-8 md:p-16 relative">
+              <div className="h-[40vh] w-full flex flex-col justify-end p-6 md:p-16 relative">
                 {/* Brand Branding Info & Links */}
-                <div className="flex flex-col md:flex-row gap-8 justify-between items-end pointer-events-auto w-full border-t border-white/10 pt-8">
-                  <div className="flex flex-col gap-4 text-left">
+                <div className="flex flex-col gap-6 md:flex-row md:gap-8 justify-between items-start md:items-end pointer-events-auto w-full border-t border-white/10 pt-6 md:pt-8">
+                  <div className="flex flex-col gap-3 text-left">
                     <span className="text-[10px] tracking-[0.3em] text-[#ff7733] font-sans uppercase">
                       COLLABORATION // LABS
                     </span>
-                    <h2 className="text-2xl md:text-3xl uppercase leading-none font-serif italic text-white drop-shadow-lg">
+                    <h2 className="text-xl md:text-3xl uppercase leading-none font-serif italic text-white drop-shadow-lg">
                       <RevealText text="Let's Build Together" />
                     </h2>
-                    <div className="flex gap-4 font-mono text-[10px] text-white/50 pt-2">
+                    <div className="flex flex-col md:flex-row gap-2 md:gap-4 font-mono text-[10px] text-white/50 pt-1">
                       <div>EMAIL: <a href="mailto:hello@narrativelabs.io" className="text-white hover:text-[#ff7733] transition-colors">hello@narrativelabs.io</a></div>
                       <div>PHONE: <span className="text-white">+1 (800) COD-ING-0</span></div>
                     </div>
                   </div>
-                  
-                  <div className="flex flex-col gap-2 text-right">
+
+                  <div className="flex flex-col gap-2 text-left md:text-right">
                     <div className="text-[9px] tracking-[0.2em] text-white/30 font-sans uppercase">
                       © 2026 SHASHWAT MANU // NARRATIVE LABS.
                     </div>
-                    <div className="flex justify-end gap-6 text-[9px] tracking-[0.2em] font-sans uppercase text-white/50">
+                    <div className="flex justify-start md:justify-end gap-6 text-[9px] tracking-[0.2em] font-sans uppercase text-white/50">
                       <a href="#twitter" className="hover:text-[#ff7733] transition-colors">TWITTER</a>
                       <a href="#github" className="hover:text-[#ff7733] transition-colors">GITHUB</a>
                       <a href="#linkedin" className="hover:text-[#ff7733] transition-colors">LINKEDIN</a>

@@ -8,6 +8,12 @@
   z-index: 5; /* Between canvas and typography */
 }
 
+@media (max-width: 768px) {
+  .sketchContainer {
+    display: none;
+  }
+}
+
 .path {
   fill: none;
   stroke: #ffb84d; /* Golden accent */

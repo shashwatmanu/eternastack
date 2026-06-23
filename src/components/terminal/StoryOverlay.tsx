@@ -10,7 +10,7 @@ export default function StoryOverlay({ progress }: StoryOverlayProps) {
   // 0.0 - 0.2: Nothing
   // 0.2 - 0.5: Phase 1 (Left block)
   // 0.5 - 0.8: Phase 2 (Right block)
-  
+
   const phase1Visible = progress > 0.05 && progress < 0.45;
   const phase2Visible = progress > 0.45 && progress < 0.85;
   const overlayVisible = progress < 0.95; // Fade everything out at climax
@@ -25,22 +25,18 @@ export default function StoryOverlay({ progress }: StoryOverlayProps) {
       {/* Phase 1: Left Side Story Block */}
       <div className={`${styles.storyBlock} ${styles.left} ${phase1Visible ? styles.visible : ''}`}>
         <div className={styles.eyebrow}>— ARCHITECTURE INITIALIZED</div>
-        <h2 className={styles.title}>The Human Element</h2>
+        <h2 className={styles.title}>The Full-Stack Architect</h2>
         <p className={styles.body}>
-          Forging digital narratives through raw logic and creative intuition. 
-          I don't just build websites; I engineer interactive, high-performance 
-          WebGL ecosystems where every shader, vertex, and line of code is a direct extension of intent.
+          Forging high-converting digital products through absolute technical precision and creative intuition. I don't just build websites; I engineer elite WebGL ecosystems where every shader, server query, and line of code is optimized to drive revenue and scale.
         </p>
       </div>
 
       {/* Phase 2: Right Side Story Block */}
       <div className={`${styles.storyBlock} ${styles.right} ${phase2Visible ? styles.visible : ''}`}>
         <div className={styles.eyebrow}>— COMPILE & EXECUTE</div>
-        <h2 className={styles.title}>The Synthetic Canvas</h2>
+        <h2 className={styles.title}>The Immersive Engine</h2>
         <p className={styles.body}>
-          Translating thought into spatial web environments. Bypassing the traditional 
-          DOM to construct fluid, scroll-driven experiences that react in real-time. 
-          Welcome to the mainframe.
+          Translating business objectives into interactive 3D spaces. Bypassing the limitations of standard layouts to construct fluid, high-performance applications to keep your clients locked into the experience. Welcome to the mainframe.
         </p>
       </div>
     </div>
