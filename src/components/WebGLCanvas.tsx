@@ -1313,7 +1313,7 @@ function PipelineAssets({
           line2={showStage1Tech ? "Scaling cross-platform ecosystems from concept to production." : "Engineering frictionless, high-fidelity web experiences."}
           position={isMobile ? [0, -0.8, -1.0] : [-3.5, 0.4, -1.0]}
           activeRange={[-0.1, 0.0, 0.10, 0.20]}
-          align={isMobile ? "center" : "left"}
+          align={(isMobile ? "center" : "left") as any}
           animationType="flyUp"
           sectionIndex={0}
           fontSize1={isMobile ? 0.38 : 0.70}
@@ -1337,7 +1337,8 @@ function PipelineAssets({
           line2={showStage2Tech ? "Deep learning models optimize system metrics." : "Robust architectures built to handle heavy data weight."}
           position={isMobile ? [0, -1.6, -1.5] : [-3.5, -0.9, -1.5]}
           activeRange={[0.10, 0.20, 1.0, 1.0]}
-          align={isMobile ? "center" : "left"}
+          // align={isMobile ? "center" : "left"}
+          align={(isMobile ? "center" : "left") as any}
           animationType="sinkDown"
           sectionIndex={1}
           fontSize1={isMobile ? 0.38 : 0.70}
@@ -1368,7 +1369,8 @@ function PipelineAssets({
           line2={isMachineRevealed ? "Enterprise-grade system protection." : "Weaving intricate backend logic securely in the dark"}
           position={isMobile ? [0, -3.8, -0.5] : [-1.5, -2.5, -0.5]}
           activeRange={[0.348, 0.408, 1.0, 1.0]}
-          align={isMobile ? "center" : "left"}
+          // align={isMobile ? "center" : "left"}
+          align={(isMobile ? "center" : "left") as any}
           animationType="materialize"
           sectionIndex={2}
           fontSize1={isMobile ? 0.32 : 0.45}
