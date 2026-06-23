@@ -234,10 +234,10 @@ function useTextScramble(targetText: string, duration = 800) {
       for (let i = 0; i < currentLength; i++) {
         // Calculate relative position of this character
         const charProgress = i / Math.max(currentLength, 1);
-        
+
         // Decrypt left-to-right
         const decryptThreshold = progress;
-        
+
         const isSpace = (i < targetText.length && targetText[i] === ' ') || (i < oldText.length && oldText[i] === ' ');
 
         if (isSpace) {
@@ -406,10 +406,10 @@ function WebGLHeroText({
     // Interactive mouse cursor parallax tilt
     const targetRotX = -state.pointer.y * 0.15;
     const targetRotY = state.pointer.x * 0.15;
-    
+
     // Kinetic scroll speed tilt
     const speedTilt = scrollState.speed * 0.20;
-    
+
     groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotX + speedTilt, 0.05);
     groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotY, 0.05);
 
@@ -424,7 +424,7 @@ function WebGLHeroText({
     if (sectionIndex === 0) {
       const distFactor = Math.max(0, 1.0 - progress / 0.12);
       const time = state.clock.getElapsedTime();
-      
+
       groupRef.current.traverse((child) => {
         if (child instanceof THREE.Mesh && child.geometry) {
           const posAttr = child.geometry.attributes.position;
@@ -434,15 +434,15 @@ function WebGLHeroText({
             }
             const orig = originalPositions.current.get(posAttr)!;
             const current = posAttr.array as Float32Array;
-            
+
             if (distFactor > 0) {
               for (let i = 0; i < orig.length; i += 3) {
                 const x = orig[i];
                 const y = orig[i + 1];
-                
+
                 const noiseX = Math.sin(time * 18.0 + y * 12.0) * 0.025 * distFactor;
                 const noiseY = Math.cos(time * 15.0 + x * 10.0) * 0.025 * distFactor;
-                
+
                 current[i] = x + noiseX;
                 current[i + 1] = y + noiseY;
               }
@@ -579,14 +579,14 @@ function CinematicClouds({ isAscending }: { isAscending?: boolean }) {
 
 function WindParticles() {
   return (
-    <Sparkles 
-      count={150} 
-      scale={25} 
-      size={5} 
-      speed={0.6} 
-      opacity={0.4} 
-      color="#ffffff" 
-      position={[0, 3, -8]} 
+    <Sparkles
+      count={150}
+      scale={25}
+      size={5}
+      speed={0.6}
+      opacity={0.4}
+      color="#ffffff"
+      position={[0, 3, -8]}
     />
   );
 }
@@ -594,14 +594,14 @@ function WindParticles() {
 // Subterranean floating dust/spore particles system for Stage 3 & 4
 function DustParticles() {
   return (
-    <Sparkles 
-      count={250} 
-      scale={25} 
-      size={6} 
-      speed={0.2} 
-      opacity={0.5} 
+    <Sparkles
+      count={250}
+      scale={25}
+      size={6}
+      speed={0.2}
+      opacity={0.5}
       color="#ffcc88" // soft golden/amber dust glow
-      position={[0, -5, 0]} 
+      position={[0, -5, 0]}
     />
   );
 }
@@ -659,7 +659,7 @@ function Ground() {
 // Actual subterranean rocky geometry for Stage 3 & 4
 function SubterraneanGround() {
   const { scene } = useGLTF("/ground%20(1).glb");
-  
+
   const clonedScene = useMemo(() => {
     const clone = scene.clone();
     clone.traverse((child) => {
@@ -694,10 +694,10 @@ function SubterraneanGround() {
 }
 
 // 3D animated Spider crawling inside Stage 3 & 4 Subterranean cave
-function SubterraneanSpider({ 
+function SubterraneanSpider({
   isMachineRevealed = false,
   glitchState = "idle"
-}: { 
+}: {
   isMachineRevealed?: boolean;
   glitchState?: "idle" | "glitching-in" | "tech-revealed" | "glitching-out";
 }) {
@@ -1116,7 +1116,7 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
 
   useFrame((state) => {
     if (isAscending) return;
-    
+
     const progress = scrollState.dampedProgress;
 
     if (progress < 0.348) {
@@ -1154,7 +1154,7 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
     } else {
       // STAGE 3 & 4 (Subterranean Cavern): Instant switch at 0.348 progress
       const bgColor = new THREE.Color("#0c0908");
-      
+
       const bgEl = document.getElementById("webgl-bg");
       if (bgEl) bgEl.style.backgroundColor = `#${bgColor.getHexString()}`;
       state.gl.setClearColor(0x000000, 0);
@@ -1269,8 +1269,8 @@ function PipelineAssets({
     }
 
     // 3. Cavern lights fade in quickly after camera teleports into view at 0.348 progress
-    const cavernLightIntensity = currentDamped < 0.348 
-      ? 0 
+    const cavernLightIntensity = currentDamped < 0.348
+      ? 0
       : Math.min((currentDamped - 0.348) / 0.05, 1.0);
 
     if (light1Ref.current) light1Ref.current.intensity = 15 * cavernLightIntensity;
@@ -1408,7 +1408,7 @@ function DynamicEnvironment() {
     const progress = scrollState.dampedProgress;
     // Fade the cavern environment down to 0.05 quickly so the cavern is completely dim upon entering at 0.348
     const intensity = progress < 0.30 ? 0.45 : Math.max(0.05, 0.45 - (progress - 0.30) * 10.0);
-    
+
     const s = scene as any;
     if ('environmentIntensity' in s) {
       s.environmentIntensity = intensity;
@@ -1434,7 +1434,7 @@ function GlitchSequenceController({
 }) {
   const glitchTriggered = useRef(false);
   const miniGlitchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Use a reference-stable value to prevent stale closures in useFrame
   const currentGlitchPhase = useRef<"idle" | "glitching-in" | "tech-revealed" | "glitching-out">("idle");
 
@@ -1503,8 +1503,8 @@ function GlitchSequenceController({
   return null;
 }
 
-export default function WebGLCanvas({ 
-  strikeActive, 
+export default function WebGLCanvas({
+  strikeActive,
   isMachineRevealed = false,
   setIsMachineRevealed,
   isAscending = false,
@@ -1512,8 +1512,8 @@ export default function WebGLCanvas({
   onTerminalReady,
   onFinalZoomComplete,
   onSpaceReady
-}: { 
-  strikeActive?: boolean; 
+}: {
+  strikeActive?: boolean;
   isMachineRevealed?: boolean;
   setIsMachineRevealed?: (val: boolean) => void;
   isAscending?: boolean;
@@ -1569,18 +1569,18 @@ export default function WebGLCanvas({
             <DynamicEnvironment />
             <EnvironmentalPipeline isAscending={isAscending} />
             <SpaceBackground isAscending={isAscending} />
-            <CameraRail 
-              isAscending={isAscending} 
+            <CameraRail
+              isAscending={isAscending}
               terminalReady={terminalReady}
-              onFinalZoomComplete={onFinalZoomComplete} 
+              onFinalZoomComplete={onFinalZoomComplete}
             />
             <PipelineAssets
-              strikeActive={strikeActive}
+              strikeActive={strikeActive ?? false}
               isMachineRevealed={isMachineRevealed}
               modelGlitchState={modelGlitchState}
               isAscending={isAscending}
             />
-            
+
             <GlitchSequenceController
               isMachineRevealed={isMachineRevealed}
               setIsMachineRevealed={setIsMachineRevealed}
@@ -1623,7 +1623,7 @@ function TerminalAssetLoader({ onLoaded }: { onLoaded: () => void }) {
   // Suspend while loading assets
   useGLTF("/me.glb");
   useGLTF("/card.glb");
-  
+
   useEffect(() => {
     // This runs only after both assets are successfully loaded and the component mounts
     onLoaded();
@@ -1684,16 +1684,16 @@ function SpaceWarp({ isAscending }: { isAscending: boolean }) {
     const ctx = canvas.getContext("2d");
     if (ctx) {
       // Create a transparent or black background depending on material blending
-      ctx.fillStyle = "#010A15"; 
+      ctx.fillStyle = "#010A15";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
+
       // Draw stylized glowing orange text
       ctx.fillStyle = "#FF9900";
       ctx.font = "bold 80px 'Arial', sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("SHASHWAT MANU", 512, 200);
-      
+
       ctx.font = "40px 'Arial', sans-serif";
       ctx.fillStyle = "#00F0FF";
       ctx.fillText("// TERMINAL", 512, 300);
@@ -1726,7 +1726,7 @@ function SpaceWarp({ isAscending }: { isAscending: boolean }) {
         if (mat) {
           const matName = (mat.name || "").toLowerCase();
           const meshName = (child.name || "").toLowerCase();
-          
+
           // Target the G5 VALVE ACCESS sub-mesh/material heuristically
           if (
             matName.includes("g5") || matName.includes("valve") || matName.includes("logo") || matName.includes("decal") || matName.includes("text") ||
@@ -1747,7 +1747,7 @@ function SpaceWarp({ isAscending }: { isAscending: boolean }) {
   return (
     <group ref={group} position={[0, 50, -100]} scale={[10, 10, 10]} visible={isAscending}>
       <primitive object={scene} />
-      
+
       {/* High-contrast lighting for the space rocks */}
       <ambientLight intensity={0.5} color="#ffffff" />
       <directionalLight position={[10, 20, 10]} intensity={2.5} color="#00F0FF" />
