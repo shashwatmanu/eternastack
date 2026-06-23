@@ -61,8 +61,8 @@ class AudioEngine {
       this.isInitialized = true;
       // Build extended loops for short tracks so repeats aren't audible.
       // cavern gets a 2s start offset to skip the broken intro.
-      this.buildExtendedLoop('drone',  '/audio/drone.mp3',  3);
-      this.buildExtendedLoop('ant',    '/audio/ground.mp3', 3);
+      this.buildExtendedLoop('drone', '/audio/drone.mp3', 3);
+      this.buildExtendedLoop('ant', '/audio/ground.mp3', 3);
       this.buildExtendedLoop('spider', '/audio/cavern.mp3', 3, 2.0);
     } catch (e) {
       console.error("Web Audio API not supported in this browser.", e);
@@ -106,7 +106,7 @@ class AudioEngine {
 
             // Crossfade-in at the start of this repeat (blend with what's already there)
             if (rep > 0 && s < xfadeSamples) {
-              const fadeIn  = s / xfadeSamples; // 0 → 1
+              const fadeIn = s / xfadeSamples; // 0 → 1
               const fadeOut = 1 - fadeIn;         // 1 → 0 (tail of previous)
               dst[dstIdx] = dst[dstIdx] * fadeOut + sample * fadeIn;
             } else {
@@ -129,7 +129,7 @@ class AudioEngine {
 
       // Stop any previous source for this key
       if (this.extendedSources[key]) {
-        try { this.extendedSources[key].stop(); } catch(e) {}
+        try { this.extendedSources[key].stop(); } catch (e) { }
       }
       this.extendedSources[key] = source;
       this.extendedGains[key] = gainNode;
@@ -150,7 +150,7 @@ class AudioEngine {
     if (this.isBooted) {
       Object.values(this.sfxTracks).forEach(track => {
         if (track.paused && track.loop) {
-          track.play().catch(() => {});
+          track.play().catch(() => { });
         }
       });
     }
@@ -161,7 +161,7 @@ class AudioEngine {
     this.isBooted = true;
     Object.values(this.sfxTracks).forEach(track => {
       if (track.loop) {
-        track.play().catch(() => {});
+        track.play().catch(() => { });
       }
     });
   }
@@ -199,28 +199,28 @@ class AudioEngine {
   playGlitch() {
     if (!this.ctx || this.isMuted || !this.masterGain) return;
     const t = this.ctx.currentTime;
-    
+
     // Synthesize a digital glitch sound
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    
+
     osc.type = "sawtooth";
     osc.frequency.setValueAtTime(100, t);
     osc.frequency.exponentialRampToValueAtTime(800, t + 0.1);
     osc.frequency.exponentialRampToValueAtTime(50, t + 0.2);
-    
+
     gain.gain.setValueAtTime(0.3, t);
     gain.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
-    
+
     osc.connect(gain);
     gain.connect(this.masterGain);
-    
+
     osc.start(t);
     osc.stop(t + 0.3);
   }
 
-  private startAntFootsteps() {}
-  private startWaterDrops() {}
+  // private startAntFootsteps() {}
+  // private startWaterDrops() {}
 
   // Generate procedural organic clicks for ant walking rhythm
   private startAntFootsteps() {
@@ -321,11 +321,11 @@ class AudioEngine {
     if (this.sfxTracks['bee']) this.sfxTracks['bee'].volume = this.isMuted ? 0 : (!this.isMachine ? skyVol * 0.4 : 0);
 
     // Extended-loop gain nodes — driven exclusively via Web Audio decoded buffers.
-    const droneVol  = this.isMuted ? 0 : (this.isMachine ? skyVol * 0.4 : 0);
-    const antVol    = this.isMuted ? 0 : groundVol * 0.45; // Wind — dominant ground sound
+    const droneVol = this.isMuted ? 0 : (this.isMachine ? skyVol * 0.4 : 0);
+    const antVol = this.isMuted ? 0 : groundVol * 0.45; // Wind — dominant ground sound
     const spiderVol = this.isMuted ? 0 : cavernVol * 0.10; // Cavern — subtle under the cave hum
-    if (this.extendedGains['drone'])  this.extendedGains['drone'].gain.setTargetAtTime(droneVol,  t, 0.1);
-    if (this.extendedGains['ant'])    this.extendedGains['ant'].gain.setTargetAtTime(antVol,    t, 0.1);
+    if (this.extendedGains['drone']) this.extendedGains['drone'].gain.setTargetAtTime(droneVol, t, 0.1);
+    if (this.extendedGains['ant']) this.extendedGains['ant'].gain.setTargetAtTime(antVol, t, 0.1);
     if (this.extendedGains['spider']) this.extendedGains['spider'].gain.setTargetAtTime(spiderVol, t, 0.1);
 
     // Ambient Hum volume (muted in space)
@@ -373,7 +373,7 @@ class AudioEngine {
     if (sfx) {
       sfx.volume = volume;
       sfx.currentTime = 0;
-      sfx.play().catch(() => {});
+      sfx.play().catch(() => { });
     }
   }
 
@@ -392,7 +392,7 @@ class AudioEngine {
       // Reset to beginning only if it truly hasn't played yet.
       if (sfx.currentTime === 0) sfx.currentTime = 0; // already 0, no-op, just explicit
       sfx.volume = targetVolume;
-      sfx.play().catch(() => {});
+      sfx.play().catch(() => { });
       return;
     }
     // Already playing from the transition — just smoothly adjust volume.
@@ -420,14 +420,14 @@ class AudioEngine {
     const stepTime = durationMs / steps;
     const startVolume = audio.volume;
     const volumeStep = (targetVolume - startVolume) / steps;
-    
+
     let currentStep = 0;
     this.fadeIntervals[key] = setInterval(() => {
       currentStep++;
       let newVol = startVolume + (volumeStep * currentStep);
       newVol = Math.max(0, Math.min(1, newVol));
       audio.volume = newVol;
-      
+
       if (currentStep >= steps) {
         clearInterval(this.fadeIntervals[key]);
         if (targetVolume === 0) {
@@ -438,7 +438,7 @@ class AudioEngine {
   }
 
   // Legacy fallback compatibility
-  setScrollTempo(speed: number) {}
+  setScrollTempo(speed: number) { }
 
   playRiser(duration: number) {
     if (!this.ctx || !this.masterGain) return;
@@ -487,9 +487,9 @@ class AudioEngine {
         this.activeRiserGain.gain.linearRampToValueAtTime(0.001, t + 0.1);
         const osc = this.activeRiserOsc;
         setTimeout(() => {
-          try { osc.stop(); } catch(e) {}
+          try { osc.stop(); } catch (e) { }
         }, 120);
-      } catch (e) {}
+      } catch (e) { }
     }
     this.activeRiserOsc = null;
     this.activeRiserGain = null;
@@ -578,16 +578,16 @@ class AudioEngine {
 
   toggleMute() {
     this.isMuted = !this.isMuted;
-    
+
     // Toggle external audio volume
     Object.values(this.sfxTracks).forEach(audio => {
       if (this.isMuted) audio.volume = 0;
     });
-    
+
     if (this.isMuted) {
-       Object.values(this.bgmTracks).forEach(audio => { audio.volume = 0; });
+      Object.values(this.bgmTracks).forEach(audio => { audio.volume = 0; });
     } else if (this.currentBgmKey && this.bgmTracks[this.currentBgmKey]) {
-       this.fadeAudio(this.bgmTracks[this.currentBgmKey], this.currentBgmKey, 0.4, 500);
+      this.fadeAudio(this.bgmTracks[this.currentBgmKey], this.currentBgmKey, 0.4, 500);
     }
 
     if (this.ctx && this.masterGain) {
