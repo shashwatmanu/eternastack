@@ -3,7 +3,8 @@
 import React, { Suspense, useRef, useMemo, useEffect, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useGLTF, useAnimations, Text, Environment, MeshReflectorMaterial, Stars, Clouds, Cloud, Sparkles } from "@react-three/drei";
+// import { useGLTF, useAnimations, Text, Environment, MeshReflectorMaterial, Stars, Clouds, Cloud, Sparkles } from "@react-three/drei";
+import { useGLTF, useAnimations, Text, Environment, MeshReflectorMaterial, Stars, Clouds, Cloud, Sparkles, Preload } from "@react-three/drei";
 import { EffectComposer, Glitch } from "@react-three/postprocessing";
 import { CameraRail } from "./CameraRail";
 import FlyingBee from "./FlyingBee";
@@ -13,6 +14,13 @@ import GroundRover from "./GroundRover";
 import { scrollState } from "@/utils/scrollState";
 import { audio } from "@/utils/audio";
 import LocalGlitchVFX from "./LocalGlitchVFX";
+
+// Point the Draco WASM decoder at our local /public/draco/ copy (bundled from
+// three/examples/jsm/libs/draco/gltf/). Using a local path instead of the
+// Google CDN avoids CORS failures, works fully offline, and — critically —
+// guarantees the decoder is present before any useGLTF.preload() calls fire,
+// which was causing the "No DRACOLoader instance provided" error on Turbopack.
+useGLTF.setDecoderPath("/draco/");
 
 // Shared coordinates for procedural web weaving
 const webAnchorPoints = {
@@ -31,10 +39,10 @@ const webGLHeroTextVertexShader = `
     vec4 worldPosition = modelMatrix * vec4(position, 1.0);
     vWorldPosition = worldPosition.xyz;
     vNormal = normalize(normalMatrix * normal);
-    
+
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     vViewPosition = -mvPosition.xyz;
-    
+
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -315,9 +323,6 @@ function WebGLHeroText({
   const scrambledLine1B = useTextScramble(line1B, 800);
   const scrambledLine2 = useTextScramble(line2, 800);
 
-  // Dynamic vertex displacement store for wind displacement
-  const originalPositions = useRef<Map<THREE.BufferAttribute | THREE.InterleavedBufferAttribute, Float32Array>>(new Map());
-
   // Shader uniforms
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
@@ -325,6 +330,9 @@ function WebGLHeroText({
     uIsMachine: { value: 0.0 },
     uSectionIndex: { value: 0.0 },
   }), []);
+
+  // Set transparent=true only once to avoid re-uploading the material every frame
+  const materialBootstrapped = useRef(false);
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -418,61 +426,29 @@ function WebGLHeroText({
     uniforms.uIsMachine.value = THREE.MathUtils.lerp(uniforms.uIsMachine.value, targetIsMachine, 0.1);
 
     // Pass the section index uniform value
-    uniforms.uSectionIndex.value = parseFloat(sectionIndex.toString());
+    uniforms.uSectionIndex.value = sectionIndex;
 
-    // KINETIC AIR DISPLACEMENT: procedural noise vertex displacement for Section 0
-    if (sectionIndex === 0) {
-      const distFactor = Math.max(0, 1.0 - progress / 0.12);
-      const time = state.clock.getElapsedTime();
-
-      groupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.geometry) {
-          const posAttr = child.geometry.attributes.position;
-          if (posAttr) {
-            if (!originalPositions.current.has(posAttr)) {
-              originalPositions.current.set(posAttr, posAttr.array.slice() as Float32Array);
-            }
-            const orig = originalPositions.current.get(posAttr)!;
-            const current = posAttr.array as Float32Array;
-
-            if (distFactor > 0) {
-              for (let i = 0; i < orig.length; i += 3) {
-                const x = orig[i];
-                const y = orig[i + 1];
-
-                const noiseX = Math.sin(time * 18.0 + y * 12.0) * 0.025 * distFactor;
-                const noiseY = Math.cos(time * 15.0 + x * 10.0) * 0.025 * distFactor;
-
-                current[i] = x + noiseX;
-                current[i + 1] = y + noiseY;
-              }
-              posAttr.needsUpdate = true;
-            } else {
-              for (let i = 0; i < orig.length; i++) {
-                current[i] = orig[i];
-              }
-              posAttr.needsUpdate = true;
-            }
-          }
-        }
-      });
-    }
-
-    uniforms.uTime.value = state.clock.getElapsedTime();
+    const elapsedTime = state.clock.getElapsedTime();
+    uniforms.uTime.value = elapsedTime;
     uniforms.uOpacity.value = opacity;
 
     groupRef.current.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material) {
         const mat = child.material as any;
-        mat.transparent = true;
+        // Set transparent=true only once — re-setting needsUpdate every frame
+        // triggers a full GPU material re-upload which is extremely expensive.
+        if (!materialBootstrapped.current) {
+          mat.transparent = true;
+          mat.needsUpdate = true;
+          materialBootstrapped.current = true;
+        }
         mat.opacity = opacity;
         if (mat.uniforms) {
           if (mat.uniforms.uOpacity) mat.uniforms.uOpacity.value = opacity;
-          if (mat.uniforms.uTime) mat.uniforms.uTime.value = state.clock.getElapsedTime();
+          if (mat.uniforms.uTime) mat.uniforms.uTime.value = elapsedTime;
           if (mat.uniforms.uIsMachine) mat.uniforms.uIsMachine.value = uniforms.uIsMachine.value;
           if (mat.uniforms.uSectionIndex) mat.uniforms.uSectionIndex.value = uniforms.uSectionIndex.value;
         }
-        mat.needsUpdate = true;
       }
     });
 
@@ -606,29 +582,43 @@ function DustParticles() {
   );
 }
 
-function Ground() {
+// Shared hook — builds a cloned+configured scene from the single cached GLTF.
+// Avoids duplicating the clone+traverse+mat.clone work that previously ran
+// independently in both Ground and SubterraneanGround on the same asset.
+function useGroundScene(variant: "surface" | "cavern") {
   const { scene } = useGLTF("/ground%20(1).glb");
-  const clonedScene = useMemo(() => {
+  return useMemo(() => {
     const clone = scene.clone();
     clone.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = false;
-        child.receiveShadow = true;
-        const mat = child.material as THREE.MeshStandardMaterial;
-        if (mat) {
-          const newMat = mat.clone();
-          newMat.transparent = true;
-          newMat.color.set("#e0e5ea"); // Premium cool ceramic white
-          newMat.roughness = 0.35; // Glossy but slightly frosted
-          newMat.metalness = 0.2; // Subtle metallic sheen
-          newMat.normalScale = new THREE.Vector2(2.5, 2.5); // Bring out details
-          newMat.needsUpdate = true;
-          child.material = newMat;
-        }
+      if (!(child instanceof THREE.Mesh)) return;
+      child.castShadow = false;
+      child.receiveShadow = true;
+      const src = child.material as THREE.MeshStandardMaterial;
+      if (!src) return;
+      const mat = src.clone();
+      if (variant === "surface") {
+        mat.transparent = true;
+        mat.color.set("#e0e5ea");
+        mat.roughness = 0.35;
+        mat.metalness = 0.2;
+        mat.normalScale.set(2.5, 2.5);
+      } else {
+        mat.transparent = false;
+        child.frustumCulled = false;
+        mat.color.set("#4a3525");
+        mat.roughness = 0.6;
+        mat.metalness = 0.1;
+        mat.normalScale.set(4.5, 4.5);
       }
+      mat.needsUpdate = true;
+      child.material = mat;
     });
     return clone;
-  }, [scene]);
+  }, [scene, variant]);
+}
+
+function Ground() {
+  const clonedScene = useGroundScene("surface");
 
   // Smoothly fade out opacity of the Stage 2 ground as camera passes it
   useFrame(() => {
@@ -637,11 +627,9 @@ function Ground() {
       if (child instanceof THREE.Mesh) {
         const mat = child.material as THREE.MeshStandardMaterial;
         if (mat) {
-          let opacity = 1.0;
-          if (currentDamped > 0.42) {
-            opacity = Math.max(1.0 - (currentDamped - 0.42) / 0.04, 0.0);
-          }
-          mat.opacity = opacity;
+          mat.opacity = currentDamped > 0.42
+            ? Math.max(1.0 - (currentDamped - 0.42) / 0.04, 0.0)
+            : 1.0;
         }
       }
     });
@@ -658,30 +646,7 @@ function Ground() {
 
 // Actual subterranean rocky geometry for Stage 3 & 4
 function SubterraneanGround() {
-  const { scene } = useGLTF("/ground%20(1).glb");
-
-  const clonedScene = useMemo(() => {
-    const clone = scene.clone();
-    clone.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = false;
-        child.receiveShadow = true;
-        child.frustumCulled = false;
-        const mat = child.material as THREE.MeshStandardMaterial;
-        if (mat) {
-          const newMat = mat.clone();
-          newMat.transparent = false; // Solid rock! Removes depth-sorting invisibility bugs
-          newMat.color.set("#4a3525"); // Lighter brown to ensure visibility
-          newMat.roughness = 0.6; // Not too glossy
-          newMat.metalness = 0.1; // Standard rock
-          newMat.normalScale = new THREE.Vector2(4.5, 4.5);
-          newMat.needsUpdate = true;
-          child.material = newMat;
-        }
-      }
-    });
-    return clone;
-  }, [scene]);
+  const clonedScene = useGroundScene("cavern");
 
   return (
     <primitive
@@ -703,8 +668,6 @@ function SubterraneanSpider({
 }) {
   const group = useRef<THREE.Group>(null);
   const gltf = useGLTF("/spider.glb");
-
-
   const { scene, animations, parser } = gltf;
   const { actions } = useAnimations(animations, group);
 
@@ -753,42 +716,72 @@ function SubterraneanSpider({
     }
   }, [actions, animations]);
 
-  // Extract materials and texture maps using the GLTF parser
+  // Resolve textures from the already-loaded GLTF parser.
+  // This is safe post-DRACOLoader fix: the spider.glb is fully decoded during the
+  // preloader, so getDependency() resolves instantly with no scroll-time hitch.
+  // useEffect(() => {
+  //   if (!parser) return;
+  //   Promise.all([
+  //     parser.getDependency("texture", 0).catch(() => null) as Promise<THREE.Texture | null>,
+  //     parser.getDependency("texture", 2).catch(() => null) as Promise<THREE.Texture | null>,
+  //   ]).then(([diffuseTex, normalTex]) => {
+  //     scene.traverse((child) => {
+  //       if (!(child instanceof THREE.Mesh)) return;
+  //       child.castShadow    = true;
+  //       child.receiveShadow = true;
+  //       if (child.material.name === "Mat_Spiderbody.001") {
+  //         if (diffuseTex) {
+  //           diffuseTex.colorSpace = THREE.SRGBColorSpace;
+  //           diffuseTex.needsUpdate = true;
+  //         }
+  //         child.material = new THREE.MeshStandardMaterial({
+  //           map:       diffuseTex ?? null,
+  //           normalMap: normalTex  ?? null,
+  //           roughness: 0.8,
+  //           metalness: 0.1,
+  //         });
+  //       } else if (child.material.name === "MAT_Spider_eyes.001") {
+  //         child.material = new THREE.MeshStandardMaterial({
+  //           color: "#080200",
+  //           roughness: 0.15,
+  //           metalness: 0.9,
+  //         });
+  //       }
+  //     });
+  //   });
+  // }, [scene, parser]);
   useEffect(() => {
     if (!parser) return;
-
-    // Load diffuse texture (index 0) and normal texture (index 2)
     Promise.all([
-      parser.getDependency("texture", 0).catch(() => null),
-      parser.getDependency("texture", 2).catch(() => null),
+      parser.getDependency("texture", 0).catch(() => null) as Promise<THREE.Texture | null>,
+      parser.getDependency("texture", 2).catch(() => null) as Promise<THREE.Texture | null>,
     ]).then(([diffuseTex, normalTex]) => {
       scene.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+        if (!(child instanceof THREE.Mesh)) return;
+        child.castShadow = true;
+        child.receiveShadow = true;
 
-          if (child.material.name === "Mat_Spiderbody.001") {
-            // Apply standard PBR material mapping the textures properly
-            const standardMat = new THREE.MeshStandardMaterial({
-              map: diffuseTex || null,
-              normalMap: normalTex || null,
-              roughness: 0.8,
-              metalness: 0.1,
-            });
+        if (diffuseTex) {
+          diffuseTex.colorSpace = THREE.SRGBColorSpace;
+          diffuseTex.needsUpdate = true;
+        }
+        if (normalTex) {
+          normalTex.needsUpdate = true;
+        }
 
-            if (diffuseTex) {
-              diffuseTex.colorSpace = THREE.SRGBColorSpace;
-              diffuseTex.needsUpdate = true;
-            }
-            child.material = standardMat;
-          } else if (child.material.name === "MAT_Spider_eyes.001") {
-            // Dark glossy material for the eyes
-            child.material = new THREE.MeshStandardMaterial({
-              color: "#080200",
-              roughness: 0.15,
-              metalness: 0.9,
-            });
-          }
+        if (child.name.toLowerCase().includes("eye") || (child.material && child.material.name.toLowerCase().includes("eye"))) {
+          child.material = new THREE.MeshStandardMaterial({
+            color: "#080200",
+            roughness: 0.15,
+            metalness: 0.9,
+          });
+        } else {
+          child.material = new THREE.MeshStandardMaterial({
+            map: diffuseTex ?? null,
+            normalMap: normalTex ?? null,
+            roughness: 0.6,
+            metalness: 0.2,
+          });
         }
       });
     });
@@ -1121,19 +1114,15 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
 
     if (progress < 0.348) {
       // STAGE 1 & 2 (Sky & Ground): Clear sky blue background and thin fog
-      const bgColor = new THREE.Color("#8ab9ff");
-      const fogColor = new THREE.Color("#e1ecfc");
 
       const bgEl = document.getElementById("webgl-bg");
       if (bgEl) bgEl.style.backgroundColor = "#8ab9ff";
       state.gl.setClearColor(0x000000, 0);
 
       if (state.scene.fog) {
-        state.scene.fog.color.copy(fogColor);
         // Stage 1 (progress < 0.20) has slightly thinner fog than Stage 2 to make sky look crisp
-        if (bgEl) bgEl.style.backgroundColor = "#8ab9ff"; // Beautiful sky blue
         (state.scene.fog as THREE.FogExp2).color.set("#8ab9ff");
-        (state.scene.fog as THREE.FogExp2).density = progress < 0.20 ? 0.008 : 0.012; // Reverted fog density
+        (state.scene.fog as THREE.FogExp2).density = progress < 0.20 ? 0.008 : 0.012;
       }
 
       if (ambientLightRef.current) {
@@ -1153,14 +1142,12 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
       }
     } else {
       // STAGE 3 & 4 (Subterranean Cavern): Instant switch at 0.348 progress
-      const bgColor = new THREE.Color("#0c0908");
-
       const bgEl = document.getElementById("webgl-bg");
-      if (bgEl) bgEl.style.backgroundColor = `#${bgColor.getHexString()}`;
+      if (bgEl) bgEl.style.backgroundColor = "#0c0908";
       state.gl.setClearColor(0x000000, 0);
 
       if (state.scene.fog) {
-        state.scene.fog.color.copy(bgColor);
+        (state.scene.fog as THREE.FogExp2).color.set("#0c0908");
         (state.scene.fog as THREE.FogExp2).density = 0.075; // Instant thick cave fog
       }
 
@@ -1311,7 +1298,7 @@ function PipelineAssets({
           line1A={showStage1Tech ? "AUTONOMOUS" : "WEIGHTLESS"}
           line1B={showStage1Tech ? "DELIVERY." : "FRONTENDS."}
           line2={showStage1Tech ? "Scaling cross-platform ecosystems from concept to production." : "Engineering frictionless, high-fidelity web experiences."}
-          position={isMobile ? [0, -0.8, -1.0] : [-3.5, 0.4, -1.0]}
+          position={isMobile ? [0, -0.3, -1.0] : [-3.5, 0.4, -1.0]}
           activeRange={[-0.1, 0.0, 0.10, 0.20]}
           align={(isMobile ? "center" : "left") as any}
           animationType="flyUp"
@@ -1335,7 +1322,7 @@ function PipelineAssets({
           line1A={showStage2Tech ? "INTELLIGENT" : "IMMENSE"}
           line1B={showStage2Tech ? "AUTOMATION." : "CAPACITY."}
           line2={showStage2Tech ? "Deep learning models optimize system metrics." : "Robust architectures built to handle heavy data weight."}
-          position={isMobile ? [0, -1.6, -1.5] : [-3.5, -0.9, -1.5]}
+          position={isMobile ? [0, -1.0, -1.5] : [-3.5, -0.9, -1.5]}
           activeRange={[0.10, 0.20, 1.0, 1.0]}
           // align={isMobile ? "center" : "left"}
           align={(isMobile ? "center" : "left") as any}
@@ -1367,7 +1354,7 @@ function PipelineAssets({
           line1A={isMachineRevealed ? "IRONCLAD" : "COMPLEX"}
           line1B={isMachineRevealed ? "SECURITY." : "NETWORKS."}
           line2={isMachineRevealed ? "Enterprise-grade system protection." : "Weaving intricate backend logic securely in the dark"}
-          position={isMobile ? [0, -3.8, -0.5] : [-1.5, -2.5, -0.5]}
+          position={isMobile ? [0, -3.1, -0.5] : [-1.5, -2.5, -0.5]}
           activeRange={[0.348, 0.408, 1.0, 1.0]}
           // align={isMobile ? "center" : "left"}
           align={(isMobile ? "center" : "left") as any}
@@ -1581,6 +1568,8 @@ export default function WebGLCanvas({
           <fogExp2 attach="fog" args={["#a6c8ff", 0.04]} />
 
           <Suspense fallback={null}>
+            {/* Eagerly compile all scene shaders during preloader so first scroll has zero compile stalls */}
+            <EagerShaderCompiler />
             {onSpaceReady && <SpaceAssetCompiler onReady={onSpaceReady} />}
             {isAscending && onTerminalReady && (
               <TerminalAssetLoader onLoaded={onTerminalReady} />
@@ -1623,6 +1612,7 @@ export default function WebGLCanvas({
             )}
 
             <SpaceWarp isAscending={isAscending} />
+            <Preload all />
           </Suspense>
         </Canvas>
       </div>
@@ -1638,6 +1628,47 @@ useGLTF.preload("/rover.glb");
 useGLTF.preload("/space.glb");
 useGLTF.preload("/me.glb");
 useGLTF.preload("/card.glb");
+
+// ─── Eager Shader Compiler ───────────────────────────────────────────────────
+// During the loading screen every GLTF scene is already in memory (useGLTF.preload
+// above fetched them all). But the browser hasn't compiled any GLSL shaders yet —
+// that work happens lazily the first time a mesh enters the frustum, causing a
+// visible hitch. This component calls gl.compile() on every loaded scene while the
+// preloader is still showing, so by the time the user clicks through ALL shaders
+// are pre-warmed on the GPU and every stage is stutter-free from frame 1.
+function EagerShaderCompiler() {
+  const { gl, camera } = useThree();
+  const compiledRef = useRef(false);
+
+  // All scenes that need their shaders pre-compiled.
+  // useGLTF reads from the THREE cache populated by the preload() calls above.
+  const groundScene = useGLTF("/ground%20(1).glb").scene;
+  const spiderScene = useGLTF("/spider.glb").scene;
+  const spyScene = useGLTF("/spy.glb").scene;
+  const droneScene = useGLTF("/drone.glb").scene;
+  const roverScene = useGLTF("/rover.glb").scene;
+  const spaceScene = useGLTF("/space.glb").scene;
+
+  useEffect(() => {
+    if (compiledRef.current) return;
+    compiledRef.current = true;
+
+    // Compile each scene in sequence — each gl.compile() call is synchronous
+    // but fast (it just uploads already-decoded data, no network needed).
+    // Running them sequentially keeps the call off the critical render path.
+    const scenes = [groundScene, spiderScene, spyScene, droneScene, roverScene, spaceScene];
+
+    // Defer until after the first paint so the preloader UI renders first,
+    // then compile everything while the user is still on the loading screen.
+    requestAnimationFrame(() => {
+      scenes.forEach(scene => {
+        try { gl.compile(scene, camera); } catch (_) { /* non-fatal */ }
+      });
+    });
+  }, [gl, camera, groundScene, spiderScene, spyScene, droneScene, roverScene, spaceScene]);
+
+  return null;
+}
 
 function TerminalAssetLoader({ onLoaded }: { onLoaded: () => void }) {
   // Suspend while loading assets
@@ -1696,18 +1727,19 @@ function SpaceWarp({ isAscending }: { isAscending: boolean }) {
   const { actions } = useAnimations(animations, scene);
   const group = useRef<THREE.Group>(null);
 
-  // Generate custom stylized texture for the hull decal
+  // Generate custom stylized texture for the hull decal.
+  // Lazy-allocated only when isAscending becomes true — avoids an unnecessary
+  // 1024×512 GPU texture upload on every page load.
   const customDecalTexture = useMemo(() => {
+    if (!isAscending) return null;
     const canvas = document.createElement("canvas");
     canvas.width = 1024;
     canvas.height = 512;
     const ctx = canvas.getContext("2d");
     if (ctx) {
-      // Create a transparent or black background depending on material blending
       ctx.fillStyle = "#010A15";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Draw stylized glowing orange text
       ctx.fillStyle = "#FF9900";
       ctx.font = "bold 80px 'Arial', sans-serif";
       ctx.textAlign = "center";
@@ -1719,10 +1751,10 @@ function SpaceWarp({ isAscending }: { isAscending: boolean }) {
       ctx.fillText("// TERMINAL", 512, 300);
     }
     const texture = new THREE.CanvasTexture(canvas);
-    texture.flipY = false; // GLTF standard uv mapping
+    texture.flipY = false;
     texture.needsUpdate = true;
     return texture;
-  }, []);
+  }, [isAscending]);
 
   // Play embedded animations perfectly synchronized with the flight
   useEffect(() => {

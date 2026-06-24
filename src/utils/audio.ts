@@ -61,60 +61,27 @@ class AudioEngine {
       this.isInitialized = true;
       // Build extended loops for short tracks so repeats aren't audible.
       // cavern gets a 2s start offset to skip the broken intro.
-      this.buildExtendedLoop('drone', '/audio/drone.mp3', 3);
-      this.buildExtendedLoop('ant', '/audio/ground.mp3', 3);
-      this.buildExtendedLoop('spider', '/audio/cavern.mp3', 3, 2.0);
+      this.buildExtendedLoop('drone', '/audio/drone.m4a', 3);
+      this.buildExtendedLoop('ant', '/audio/ground.m4a', 3);
+      this.buildExtendedLoop('spider', '/audio/cavern.m4a', 3, 2.0);
     } catch (e) {
       console.error("Web Audio API not supported in this browser.", e);
     }
   }
 
-  // Fetch an audio file, decode it, optionally skip a leading offset,
-  // stitch `repeats` copies with a short crossfade, and play it as a
-  // seamlessly looping AudioBufferSourceNode.
-  private async buildExtendedLoop(key: string, url: string, repeats: number, startOffsetSec = 0) {
+  // Fetch an audio file, decode it, and play it as a seamlessly looping
+  // AudioBufferSourceNode using native loopStart/loopEnd to skip a broken intro.
+  //
+  // Previously this manually stitched `repeats` copies with a crossfade in a
+  // O(repeats × srcLen) JS loop — for a 30-second stereo file that means
+  // ~8 million iterations on the main thread, freezing the UI for 200–400 ms
+  // right after audio.init() on mount. The native loop approach is zero-cost.
+  private async buildExtendedLoop(key: string, url: string, _repeats: number, startOffsetSec = 0) {
     if (!this.ctx || !this.masterGain) return;
     try {
       const response = await fetch(url);
       const arrayBuffer = await response.arrayBuffer();
       const decoded = await this.ctx.decodeAudioData(arrayBuffer);
-
-      const sr = decoded.sampleRate;
-      const ch = decoded.numberOfChannels;
-      // Trim the broken/unwanted intro by starting at startOffsetSec
-      const offsetSamples = Math.floor(sr * startOffsetSec);
-      const srcLen = decoded.length - offsetSamples;
-      const xfadeSamples = Math.floor(sr * 0.5); // 0.5s crossfade
-
-      // Build a stitched buffer: each repeat overlaps the previous by xfadeSamples
-      const stitchedLen = srcLen * repeats - xfadeSamples * (repeats - 1);
-      const stitched = this.ctx.createBuffer(ch, stitchedLen, sr);
-
-      for (let c = 0; c < ch; c++) {
-        const raw = decoded.getChannelData(c);
-        // View starting after the offset
-        const src = raw.subarray(offsetSamples);
-        const dst = stitched.getChannelData(c);
-
-        for (let rep = 0; rep < repeats; rep++) {
-          const offset = rep * (srcLen - xfadeSamples);
-          for (let s = 0; s < srcLen; s++) {
-            const dstIdx = offset + s;
-            if (dstIdx >= stitchedLen) break;
-
-            const sample = src[s];
-
-            // Crossfade-in at the start of this repeat (blend with what's already there)
-            if (rep > 0 && s < xfadeSamples) {
-              const fadeIn = s / xfadeSamples; // 0 → 1
-              const fadeOut = 1 - fadeIn;         // 1 → 0 (tail of previous)
-              dst[dstIdx] = dst[dstIdx] * fadeOut + sample * fadeIn;
-            } else {
-              dst[dstIdx] = sample;
-            }
-          }
-        }
-      }
 
       // Create and connect a gain node for volume control
       const gainNode = this.ctx.createGain();
@@ -122,17 +89,21 @@ class AudioEngine {
       gainNode.connect(this.masterGain);
 
       const source = this.ctx.createBufferSource();
-      source.buffer = stitched;
-      source.loop = true;
+      source.buffer   = decoded;
+      source.loop      = true;
+      // Skip the broken/unwanted intro by setting loopStart; browser handles the
+      // crossfade-free seamless loop at no JS cost whatsoever.
+      source.loopStart = startOffsetSec;
+      source.loopEnd   = decoded.duration;
       source.connect(gainNode);
-      source.start(0);
+      source.start(0, startOffsetSec);
 
       // Stop any previous source for this key
       if (this.extendedSources[key]) {
         try { this.extendedSources[key].stop(); } catch (e) { }
       }
       this.extendedSources[key] = source;
-      this.extendedGains[key] = gainNode;
+      this.extendedGains[key]   = gainNode;
     } catch (e) {
       // Silently fall back to HTMLAudioElement loop if fetch/decode fails
     }
@@ -345,15 +316,15 @@ class AudioEngine {
     // they are handled exclusively by buildExtendedLoop() via Web Audio
     // to avoid double-playing, get longer seamless loops, and apply start-offset trims.
     const sfxFiles: { [key: string]: string } = {
-      bee: '/audio/bee.mp3',
+      bee: '/audio/bee.m4a',
       // drone:  handled by buildExtendedLoop
       // ant:    handled by buildExtendedLoop
-      rover: '/audio/ground.mp3',
+      rover: '/audio/ground.m4a',
       // spider: handled by buildExtendedLoop (with 2s offset trim)
       // spy:    handled by buildExtendedLoop (with 2s offset trim)
-      space_transition: '/audio/space.mp3',
-      face: '/audio/space.mp3',
-      id_card: '/audio/space.mp3'
+      space_transition: '/audio/space.m4a',
+      face: '/audio/space.m4a',
+      id_card: '/audio/space.m4a'
     };
 
     Object.entries(sfxFiles).forEach(([key, url]) => {

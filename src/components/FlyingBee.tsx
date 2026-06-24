@@ -8,6 +8,17 @@ import gsap from "gsap";
 import { scrollState } from "@/utils/scrollState";
 import LocalGlitchVFX from "./LocalGlitchVFX";
 import { audio } from "@/utils/audio";
+
+// Hoisted to module level — avoids new THREE.Vector3/Euler() per frame (GC jitter)
+const _beeTargetPos = new THREE.Vector3();
+const _beeTargetRot = new THREE.Vector3();
+const _beeFromPos   = new THREE.Vector3(0.2, 0.1, 1.3);
+const _beeToPos     = new THREE.Vector3(0.5, 0.2, 1.3);
+const _beeEuler     = new THREE.Euler();
+
+// Draco decoder — must match the path set in WebGLCanvas.tsx (/draco/ local copy)
+useGLTF.setDecoderPath("/draco/");
+
 export default function FlyingBee({ 
   strikeActive, 
   isMachineRevealed = false,
@@ -94,15 +105,14 @@ export default function FlyingBee({
 
 
 
-  // Bounding box size logging upon loading
+  // Bounding box logged only in dev, not in production
   useEffect(() => {
-    if (scene) {
-      const box = new THREE.Box3().setFromObject(scene);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      console.log("Bee Bounding Box Size:", size);
-      console.log("Bee Bounding Box Center:", box.getCenter(new THREE.Vector3()));
-    }
+    if (process.env.NODE_ENV !== 'development' || !scene) return;
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    console.log("Bee Bounding Box Size:", size);
+    console.log("Bee Bounding Box Center:", box.getCenter(new THREE.Vector3()));
   }, [scene]);
 
   // Play the default flight "hover" animation loop
@@ -195,17 +205,18 @@ export default function FlyingBee({
 
 
     if (!strikeActive) {
-      let targetPos = new THREE.Vector3(0, 0, 0);
-      let targetRot = new THREE.Vector3(0, -Math.PI / 5, 0); // three-quarter angle
+      // Reuse pre-allocated vectors — zero heap allocations per frame
+      _beeTargetPos.set(0, 0, 0);
+      _beeTargetRot.set(0, -Math.PI / 5, 0);
 
       if (progress < 0.33) {
         const t = progress / 0.33;
-        targetPos.lerpVectors(new THREE.Vector3(0.2, 0.1, 1.3), new THREE.Vector3(0.5, 0.2, 1.3), t);
-        targetRot.x = THREE.MathUtils.lerp(0, -Math.PI / 8, t);
-        targetRot.y = THREE.MathUtils.lerp(-Math.PI / 5, Math.PI / 8, t);
+        _beeTargetPos.lerpVectors(_beeFromPos, _beeToPos, t);
+        _beeTargetRot.x = THREE.MathUtils.lerp(0, -Math.PI / 8, t);
+        _beeTargetRot.y = THREE.MathUtils.lerp(-Math.PI / 5, Math.PI / 8, t);
       }
 
-      group.current.position.lerp(targetPos, 0.05);
+      group.current.position.lerp(_beeTargetPos, 0.05);
       group.current.position.x += bobX;
       group.current.position.y += bobY;
 
@@ -216,7 +227,6 @@ export default function FlyingBee({
         group.current.position.y += (Math.random() - 0.5) * 0.15;
         group.current.position.z += (Math.random() - 0.5) * 0.15;
 
-        // Posterized, jerky Spider-Verse silhouette splitting scaled by local model size s
         const timeStep = Math.floor(state.clock.getElapsedTime() * 24) / 24;
         const shiftX = (Math.sin(timeStep * 50) * 0.08 + (Math.random() - 0.5) * 0.04) / s;
         const shiftY = (Math.cos(timeStep * 40) * 0.08 + (Math.random() - 0.5) * 0.04) / s;
@@ -231,13 +241,12 @@ export default function FlyingBee({
         }
       }
 
-      const currentEuler = new THREE.Euler().setFromQuaternion(group.current.quaternion);
-      const lerpedEuler = new THREE.Euler(
-        THREE.MathUtils.lerp(currentEuler.x, targetRot.x, 0.05),
-        THREE.MathUtils.lerp(currentEuler.y, targetRot.y, 0.05),
-        THREE.MathUtils.lerp(currentEuler.z, 0, 0.05)
+      _beeEuler.setFromQuaternion(group.current.quaternion);
+      group.current.rotation.set(
+        THREE.MathUtils.lerp(_beeEuler.x, _beeTargetRot.x, 0.05),
+        THREE.MathUtils.lerp(_beeEuler.y, _beeTargetRot.y, 0.05),
+        THREE.MathUtils.lerp(_beeEuler.z, 0, 0.05)
       );
-      group.current.quaternion.setFromEuler(lerpedEuler);
     }
   });
 

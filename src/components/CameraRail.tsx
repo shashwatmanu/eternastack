@@ -43,6 +43,12 @@ export function CameraRail({
   const l2 = useMemo(() => new THREE.Vector3(0.4, -4.95, 0.7), []);    // Stage 3: Spider center (aligned to cavern depth)
   const l3 = useMemo(() => new THREE.Vector3(0.4, -5.15, 0.7), []);    // Stage 4: Spider head focus
 
+  // Reusable segment scratch vectors — avoids 4x new THREE.Vector3() every frame
+  const startPos  = useRef(new THREE.Vector3());
+  const endPos    = useRef(new THREE.Vector3());
+  const startLook = useRef(new THREE.Vector3());
+  const endLook   = useRef(new THREE.Vector3());
+
   useFrame((state, delta) => {
     if (isAscending) {
       if (!ascentTriggered.current) {
@@ -172,33 +178,28 @@ export function CameraRail({
 
     // 2. Linear interpolation between path segments
     let segmentProgress = 0;
-    const startPos = new THREE.Vector3();
-    const endPos = new THREE.Vector3();
-    const startLook = new THREE.Vector3();
-    const endLook = new THREE.Vector3();
 
     if (progress < 0.348) {
-      // Sky -> Ground (restored to original 0.45 travel speed scale)
+      // Sky -> Ground
       segmentProgress = progress / 0.45;
-      startPos.copy(p0);
-      endPos.copy(p1);
-      startLook.copy(l0);
-      endLook.copy(l1);
+      startPos.current.copy(p0);
+      endPos.current.copy(p1);
+      startLook.current.copy(l0);
+      endLook.current.copy(l1);
     } else {
-      // Instant camera teleportation to Cavern at progress >= 0.348 (during blackout)
-      // Remaining scroll (0.348 to 1.0) controls the side-to-front pan within the cave.
+      // Instant camera teleportation to Cavern at progress >= 0.348
       segmentProgress = (progress - 0.348) / 0.652;
-      startPos.copy(p2);
-      endPos.copy(p3);
-      startLook.copy(l2);
-      endLook.copy(l3);
+      startPos.current.copy(p2);
+      endPos.current.copy(p3);
+      startLook.current.copy(l2);
+      endLook.current.copy(l3);
     }
 
     // Smoothstep interpolation easing
     const t = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp(segmentProgress, 0, 1), 0, 1);
 
-    targetPos.current.lerpVectors(startPos, endPos, t);
-    targetLook.current.lerpVectors(startLook, endLook, t);
+    targetPos.current.lerpVectors(startPos.current, endPos.current, t);
+    targetLook.current.lerpVectors(startLook.current, endLook.current, t);
 
     // 3. Set coordinates (no mouse controls parallax to ensure pure scroll choreography)
     camera.position.copy(targetPos.current);

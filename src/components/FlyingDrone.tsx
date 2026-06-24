@@ -9,6 +9,13 @@ import { scrollState } from "@/utils/scrollState";
 import LocalGlitchVFX from "./LocalGlitchVFX";
 import { audio } from "@/utils/audio";
 
+// Hoisted to module level — avoids new THREE.Vector3/Euler() per frame (GC jitter)
+const _droneTargetPos = new THREE.Vector3();
+const _droneTargetRot = new THREE.Vector3();
+const _droneFromPos   = new THREE.Vector3(0.2, 0.1, 1.3);
+const _droneToPos     = new THREE.Vector3(0.5, 0.2, 1.3);
+const _droneEuler     = new THREE.Euler();
+
 export default function FlyingDrone({ 
   strikeActive,
   glitchState = "idle"
@@ -156,18 +163,18 @@ export default function FlyingDrone({
     group.current.scale.set(s, s, s);
 
     if (!strikeActive) {
-      // Align targetPos and targetRot path coordinates with FlyingBee
-      let targetPos = new THREE.Vector3(0, 0, 0);
-      let targetRot = new THREE.Vector3(0, -Math.PI / 5, 0); // three-quarter angle
+      // Reuse pre-allocated vectors — zero heap allocations per frame
+      _droneTargetPos.set(0, 0, 0);
+      _droneTargetRot.set(0, -Math.PI / 5, 0);
 
       if (progress < 0.33) {
         const t = progress / 0.33;
-        targetPos.lerpVectors(new THREE.Vector3(0.2, 0.1, 1.3), new THREE.Vector3(0.5, 0.2, 1.3), t);
-        targetRot.x = THREE.MathUtils.lerp(0, -Math.PI / 8, t);
-        targetRot.y = THREE.MathUtils.lerp(-Math.PI / 5, Math.PI / 8, t);
+        _droneTargetPos.lerpVectors(_droneFromPos, _droneToPos, t);
+        _droneTargetRot.x = THREE.MathUtils.lerp(0, -Math.PI / 8, t);
+        _droneTargetRot.y = THREE.MathUtils.lerp(-Math.PI / 5, Math.PI / 8, t);
       }
 
-      group.current.position.lerp(targetPos, 0.05);
+      group.current.position.lerp(_droneTargetPos, 0.05);
       group.current.position.x += bobX;
       group.current.position.y += bobY;
 
@@ -178,7 +185,6 @@ export default function FlyingDrone({
         group.current.position.y += (Math.random() - 0.5) * 0.15;
         group.current.position.z += (Math.random() - 0.5) * 0.15;
 
-        // Posterized, jerky Spider-Verse silhouette splitting scaled by local model size s
         const timeStep = Math.floor(state.clock.getElapsedTime() * 24) / 24;
         const shiftX = (Math.sin(timeStep * 50) * 0.08 + (Math.random() - 0.5) * 0.04) / s;
         const shiftY = (Math.cos(timeStep * 40) * 0.08 + (Math.random() - 0.5) * 0.04) / s;
@@ -193,13 +199,12 @@ export default function FlyingDrone({
         }
       }
 
-      const currentEuler = new THREE.Euler().setFromQuaternion(group.current.quaternion);
-      const lerpedEuler = new THREE.Euler(
-        THREE.MathUtils.lerp(currentEuler.x, targetRot.x, 0.05),
-        THREE.MathUtils.lerp(currentEuler.y, targetRot.y, 0.05),
-        THREE.MathUtils.lerp(currentEuler.z, 0, 0.05)
+      _droneEuler.setFromQuaternion(group.current.quaternion);
+      group.current.rotation.set(
+        THREE.MathUtils.lerp(_droneEuler.x, _droneTargetRot.x, 0.05),
+        THREE.MathUtils.lerp(_droneEuler.y, _droneTargetRot.y, 0.05),
+        THREE.MathUtils.lerp(_droneEuler.z, 0, 0.05)
       );
-      group.current.quaternion.setFromEuler(lerpedEuler);
     }
   });
 
