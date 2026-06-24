@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { useGLTF, useAnimations, useTexture } from "@react-three/drei";
+import { useGLTF, useAnimations } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import gsap from "gsap";
@@ -12,20 +12,20 @@ import { audio } from "@/utils/audio";
 // Hoisted to module level — avoids new THREE.Vector3/Euler() per frame (GC jitter)
 const _beeTargetPos = new THREE.Vector3();
 const _beeTargetRot = new THREE.Vector3();
-const _beeFromPos   = new THREE.Vector3(0.2, 0.1, 1.3);
-const _beeToPos     = new THREE.Vector3(0.5, 0.2, 1.3);
-const _beeEuler     = new THREE.Euler();
+const _beeFromPos = new THREE.Vector3(0.2, 0.1, 1.3);
+const _beeToPos = new THREE.Vector3(0.5, 0.2, 1.3);
+const _beeEuler = new THREE.Euler();
 
 // Draco decoder — must match the path set in WebGLCanvas.tsx (/draco/ local copy)
 useGLTF.setDecoderPath("/draco/");
 
-export default function FlyingBee({ 
-  strikeActive, 
+export default function FlyingBee({
+  strikeActive,
   isMachineRevealed = false,
   glitchState = "idle"
-}: { 
-  strikeActive: boolean; 
-  isMachineRevealed?: boolean; 
+}: {
+  strikeActive: boolean;
+  isMachineRevealed?: boolean;
   glitchState?: "idle" | "glitching-in" | "tech-revealed" | "glitching-out";
 }) {
   const group = useRef<THREE.Group>(null);
@@ -36,7 +36,7 @@ export default function FlyingBee({
   // Clone the scene for Spider-Verse chromatic silhouettes
   const cyanClone = useMemo(() => {
     const clone = scene.clone();
-    clone.traverse((child) => {
+    clone.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
         child.material = new THREE.MeshBasicMaterial({
           color: "#00FFFF",
@@ -51,7 +51,7 @@ export default function FlyingBee({
 
   const magentaClone = useMemo(() => {
     const clone = scene.clone();
-    clone.traverse((child) => {
+    clone.traverse((child: THREE.Object3D) => {
       if (child instanceof THREE.Mesh) {
         child.material = new THREE.MeshBasicMaterial({
           color: "#FF00FF",
@@ -67,41 +67,68 @@ export default function FlyingBee({
   const cyanCloneRef = useRef<THREE.Group>(null);
   const magentaCloneRef = useRef<THREE.Group>(null);
 
-  // Load textures programmatically
-  const textures = useTexture({
-    map: "/flying-bee/textures/gltf_embedded_0.png",
-    normalMap: "/flying-bee/textures/gltf_embedded_2.png",
-    roughnessMap: "/flying-bee/textures/gltf_embedded_1.png",
-  });
-
-  // Align textures with standard GLTF configurations
+  // Apply chrome/metallic overrides on top of the embedded WebP textures.
+  // After metalrough conversion the material is standard MR — Three.js populates
+  // src.map, src.normalMap, src.roughnessMap directly from the GLB binary.
+  // useEffect(() => {
+  //   scene.traverse((child: THREE.Object3D) => {
+  //     if (!(child instanceof THREE.Mesh)) return;
+  //     child.castShadow = false;
+  //     child.receiveShadow = false;
+  //     const src = child.material as THREE.MeshStandardMaterial;
+  //     if (!src) return;
+  //     const map          = src.map          ?? null;
+  //     const normalMap    = src.normalMap    ?? null;
+  //     const roughnessMap = src.roughnessMap ?? null;
+  //     if (map)       { map.colorSpace = THREE.SRGBColorSpace; map.needsUpdate = true; }
+  //     if (normalMap) { normalMap.needsUpdate = true; }
+  //     child.material = new THREE.MeshStandardMaterial({
+  //       color:        "#e5e7eb",
+  //       map,
+  //       normalMap,
+  //       roughnessMap,
+  //       metalnessMap: roughnessMap,
+  //       roughness:    0.08,
+  //       metalness:    0.95,
+  //     });
+  //   });
+  // }, [scene]);
+  // Apply chrome/metallic overrides on top of the embedded WebP textures.
   useEffect(() => {
-    Object.values(textures).forEach((t) => {
-      t.flipY = false;
-      t.colorSpace = THREE.SRGBColorSpace;
-    });
-  }, [textures]);
+    scene.traverse((child: THREE.Object3D) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.castShadow = false;
+      child.receiveShadow = false;
 
-  // Bind textures programmatically to mesh material slots with chrome/metallic overrides
-  useEffect(() => {
-    scene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = false; // Disable bee shadows to prevent casting onto the ground level
-        child.receiveShadow = false;
-        const mat = child.material as THREE.MeshStandardMaterial;
-        if (mat) {
-          mat.color.set("#e5e7eb"); // Bright silver base for chrome reflection
-          mat.map = textures.map;
-          mat.normalMap = textures.normalMap;
-          mat.roughnessMap = textures.roughnessMap;
-          mat.metalnessMap = textures.roughnessMap;
-          mat.roughness = 0.08; // Super polished smooth surface
-          mat.metalness = 0.95; // Chrome metalness override
-          mat.needsUpdate = true;
-        }
+      const src = child.material as THREE.MeshStandardMaterial;
+      if (!src) return;
+
+      // Preserve the exact texture maps parsed natively from the GLB
+      const map = src.map ?? null;
+      const normalMap = src.normalMap ?? null;
+      const roughnessMap = src.roughnessMap ?? null;
+      const metalnessMap = src.metalnessMap ?? null;
+
+      if (map) {
+        map.colorSpace = THREE.SRGBColorSpace;
+        map.needsUpdate = true;
       }
+      if (normalMap) {
+        normalMap.needsUpdate = true;
+      }
+
+      // Re-assign material honoring native map hierarchies with clear gloss tuning
+      child.material = new THREE.MeshStandardMaterial({
+        color: "#ffffff", // Change from #e5e7eb to pure white so your map colors show accurately
+        map: map,
+        normalMap: normalMap,
+        roughnessMap: roughnessMap,
+        metalnessMap: metalnessMap,
+        roughness: 0.15,      // Slightly bumped up from 0.08 so it doesn't blindingly reflect background environment colors
+        metalness: 0.95,
+      });
     });
-  }, [scene, textures]);
+  }, [scene]);
 
 
 
@@ -159,25 +186,25 @@ export default function FlyingBee({
         duration: 0.3,
         ease: "power2.out"
       })
-      .to(group.current.rotation, {
-        x: -Math.PI / 6,
-        y: Math.PI / 8,
-        duration: 0.3,
-        ease: "power2.out"
-      }, "<")
-      .to(group.current.position, {
-        x: 0,
-        y: -0.3,
-        z: 0.5, // Return to Act 4 position
-        duration: 1.4,
-        ease: "power3.inOut"
-      })
-      .to(group.current.rotation, {
-        x: 0,
-        y: 0,
-        duration: 1.4,
-        ease: "power3.inOut"
-      }, "<");
+        .to(group.current.rotation, {
+          x: -Math.PI / 6,
+          y: Math.PI / 8,
+          duration: 0.3,
+          ease: "power2.out"
+        }, "<")
+        .to(group.current.position, {
+          x: 0,
+          y: -0.3,
+          z: 0.5, // Return to Act 4 position
+          duration: 1.4,
+          ease: "power3.inOut"
+        })
+        .to(group.current.rotation, {
+          x: 0,
+          y: 0,
+          duration: 1.4,
+          ease: "power3.inOut"
+        }, "<");
     }
     lastStrikeActive.current = strikeActive;
   }, [strikeActive, actions]);
@@ -189,7 +216,7 @@ export default function FlyingBee({
     const time = state.clock.getElapsedTime();
 
     // Fast, gentle flutter bobbing for insect flight
-    const bobY = Math.sin(time * 1.5) * 0.04; 
+    const bobY = Math.sin(time * 1.5) * 0.04;
     const bobX = Math.cos(time * 1.0) * 0.03;
 
     // Dynamic scale to fade out the bee cleanly to simulate it flying away
@@ -230,7 +257,7 @@ export default function FlyingBee({
         const timeStep = Math.floor(state.clock.getElapsedTime() * 24) / 24;
         const shiftX = (Math.sin(timeStep * 50) * 0.08 + (Math.random() - 0.5) * 0.04) / s;
         const shiftY = (Math.cos(timeStep * 40) * 0.08 + (Math.random() - 0.5) * 0.04) / s;
-        
+
         if (cyanCloneRef.current) {
           cyanCloneRef.current.position.set(-shiftX, -shiftY, 0);
           cyanCloneRef.current.scale.setScalar(1.0 + Math.sin(timeStep * 30) * 0.05);
@@ -272,6 +299,4 @@ export default function FlyingBee({
 }
 
 useGLTF.preload("/flying-bee/source/Flying bee.glb");
-useTexture.preload("/flying-bee/textures/gltf_embedded_0.png");
-useTexture.preload("/flying-bee/textures/gltf_embedded_2.png");
-useTexture.preload("/flying-bee/textures/gltf_embedded_1.png");
+

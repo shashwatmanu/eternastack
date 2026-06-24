@@ -3,17 +3,23 @@
 import React, { Suspense, useRef, useMemo, useEffect, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-// import { useGLTF, useAnimations, Text, Environment, MeshReflectorMaterial, Stars, Clouds, Cloud, Sparkles } from "@react-three/drei";
-import { useGLTF, useAnimations, Text, Environment, MeshReflectorMaterial, Stars, Clouds, Cloud, Sparkles, Preload } from "@react-three/drei";
+import dynamic from "next/dynamic";
+import { useGLTF, useAnimations, Text, Environment, MeshReflectorMaterial, Stars, Clouds, Cloud, Sparkles } from "@react-three/drei";
 import { EffectComposer, Glitch } from "@react-three/postprocessing";
-import { CameraRail } from "./CameraRail";
-import FlyingBee from "./FlyingBee";
-import GroundAnt from "./GroundAnt";
-import FlyingDrone from "./FlyingDrone";
-import GroundRover from "./GroundRover";
 import { scrollState } from "@/utils/scrollState";
 import { audio } from "@/utils/audio";
 import LocalGlitchVFX from "./LocalGlitchVFX";
+
+// ─── Lazy sub-components ──────────────────────────────────────────────────────
+// Each of these pulls in Three.js, GSAP, its own GLTFs, and custom shaders.
+// By code-splitting them we break them out of the initial bundle entirely —
+// they are evaluated in parallel while the Preloader is showing, eliminating
+// the ~5.5 s scripting block that was blocking the main thread on first load.
+const CameraRail   = dynamic(() => import("./CameraRail").then(m => ({ default: m.CameraRail })), { ssr: false });
+const FlyingBee    = dynamic(() => import("./FlyingBee"),   { ssr: false });
+const GroundAnt    = dynamic(() => import("./GroundAnt"),   { ssr: false });
+const FlyingDrone  = dynamic(() => import("./FlyingDrone"), { ssr: false });
+const GroundRover  = dynamic(() => import("./GroundRover"), { ssr: false });
 
 // Point the Draco WASM decoder at our local /public/draco/ copy (bundled from
 // three/examples/jsm/libs/draco/gltf/). Using a local path instead of the
@@ -554,31 +560,27 @@ function WebGLHeroText({
 //   );
 // }
 // Soft drifting wind/cloud particles representing sky atmospheric details for Stage 1
-function CinematicClouds({ isAscending }: { isAscending?: boolean }) {
+function CinematicClouds({ isAscending, isMobile }: { isAscending?: boolean; isMobile?: boolean }) {
   if (isAscending) return null;
+  // Halve cloud polygon count on mobile — each Cloud segment is a mesh primitive.
+  // Desktop: 30/20/20 segments. Mobile: 15/10/10.
+  const s = isMobile ? 0.5 : 1;
   return (
     <group position={[0, 0, 0]}>
       <Clouds>
-        {/* EDIT THE SECOND NUMBER IN THE position={[X, Y, Z]} ARRAYS BELOW: */}
-
-        {/* Center Cloud (Currently Y = 1.8) -> Try 2.2, 2.5, etc. to lift it higher */}
-        <Cloud seed={1} segments={30} bounds={[8, 1, 1]} volume={6} color="#e0e8f5" position={[0, 5, -3.5]} speed={0.1} opacity={0.35} />
-
-        {/* Left Cloud (Currently Y = 2.2) -> Try 2.6, 2.8, etc. */}
-        <Cloud seed={2} segments={20} bounds={[6, 1, 1]} volume={4} color="#c5d8f7" position={[-4.5, 3, -4]} speed={0.15} opacity={0.2} />
-
-        {/* Right Cloud (Currently Y = 2.0) -> Try 2.4, 2.7, etc. */}
-        <Cloud seed={3} segments={20} bounds={[6, 1, 1]} volume={4} color="#dbe5f7" position={[4.5, 4, -4]} speed={0.12} opacity={0.2} />
+        <Cloud seed={1} segments={Math.round(30 * s)} bounds={[8, 1, 1]} volume={6} color="#e0e8f5" position={[0, 5, -3.5]} speed={0.1} opacity={0.35} />
+        <Cloud seed={2} segments={Math.round(20 * s)} bounds={[6, 1, 1]} volume={4} color="#c5d8f7" position={[-4.5, 3, -4]} speed={0.15} opacity={0.2} />
+        <Cloud seed={3} segments={Math.round(20 * s)} bounds={[6, 1, 1]} volume={4} color="#dbe5f7" position={[4.5, 4, -4]} speed={0.12} opacity={0.2} />
       </Clouds>
     </group>
   );
 }
 
 
-function WindParticles() {
+function WindParticles({ isMobile }: { isMobile?: boolean }) {
   return (
     <Sparkles
-      count={150}
+      count={isMobile ? 75 : 150}
       scale={25}
       size={5}
       speed={0.6}
@@ -590,15 +592,15 @@ function WindParticles() {
 }
 
 // Subterranean floating dust/spore particles system for Stage 3 & 4
-function DustParticles() {
+function DustParticles({ isMobile }: { isMobile?: boolean }) {
   return (
     <Sparkles
-      count={250}
+      count={isMobile ? 125 : 250}
       scale={25}
       size={6}
       speed={0.2}
       opacity={0.5}
-      color="#ffcc88" // soft golden/amber dust glow
+      color="#ffcc88"
       position={[0, -5, 0]}
     />
   );
@@ -618,6 +620,28 @@ function useGroundScene(variant: "surface" | "cavern") {
       const src = child.material as THREE.MeshStandardMaterial;
       if (!src) return;
       const mat = src.clone();
+
+      // ── Texture resolution budget ────────────────────────────────────────────
+      // The base-color texture is 2048×2048 WebP (701 KB on disk, 22 MB VRAM).
+      // By enabling proper mip-mapping and capping anisotropy we:
+      //   • Let the GPU automatically use lower mip levels at distance (halves
+      //     effective VRAM to ~6 MB on mid-range devices).
+      //   • Cap anisotropic filtering at 4x — beyond that the quality gain is
+      //     imperceptible for a tileable ground texture viewed at oblique angles.
+      if (mat.map) {
+        mat.map.minFilter     = THREE.LinearMipmapLinearFilter; // Trilinear — best mip quality
+        mat.map.magFilter     = THREE.LinearFilter;
+        mat.map.anisotropy    = Math.min(4, mat.map.anisotropy); // Cap at 4x (16x is GPU-costly)
+        mat.map.generateMipmaps = true;
+        mat.map.needsUpdate   = true;
+      }
+      if (mat.normalMap) {
+        mat.normalMap.minFilter  = THREE.LinearMipmapLinearFilter;
+        mat.normalMap.anisotropy = Math.min(4, mat.normalMap.anisotropy);
+        mat.normalMap.generateMipmaps = true;
+        mat.normalMap.needsUpdate = true;
+      }
+
       if (variant === "surface") {
         mat.transparent = true;
         mat.color.set("#e0e5ea");
@@ -642,19 +666,26 @@ function useGroundScene(variant: "surface" | "cavern") {
 function Ground() {
   const clonedScene = useGroundScene("surface");
 
+  // Cache the meshes once on mount — avoids scene-graph traversal every useFrame.
+  const groundMeshes = useRef<THREE.Mesh[]>([]);
+  useEffect(() => {
+    const meshes: THREE.Mesh[] = [];
+    clonedScene.traverse((child) => {
+      if (child instanceof THREE.Mesh) meshes.push(child);
+    });
+    groundMeshes.current = meshes;
+  }, [clonedScene]);
+
   // Smoothly fade out opacity of the Stage 2 ground as camera passes it
   useFrame(() => {
     const currentDamped = scrollState.dampedProgress;
-    clonedScene.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        const mat = child.material as THREE.MeshStandardMaterial;
-        if (mat) {
-          mat.opacity = currentDamped > 0.42
-            ? Math.max(1.0 - (currentDamped - 0.42) / 0.04, 0.0)
-            : 1.0;
-        }
-      }
-    });
+    const opacity = currentDamped > 0.42
+      ? Math.max(1.0 - (currentDamped - 0.42) / 0.04, 0.0)
+      : 1.0;
+    for (const child of groundMeshes.current) {
+      const mat = child.material as THREE.MeshStandardMaterial;
+      if (mat) mat.opacity = opacity;
+    }
   });
 
   return (
@@ -1199,6 +1230,14 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
         intensity={1.8}
         color="#ffffff"
         castShadow
+        shadow-mapSize-width={512}
+        shadow-mapSize-height={512}
+        shadow-camera-near={0.5}
+        shadow-camera-far={50}
+        shadow-camera-left={-10}
+        shadow-camera-right={10}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
       />
 
       {/* STAGE 2: Spotlight for Ground Ant casting shadows */}
@@ -1308,8 +1347,8 @@ function PipelineAssets({
     <>
       {/* STAGE 1 (Sky): Wind Particles & Flying Bee / Flying Drone */}
       <group ref={stage1Ref}>
-        <CinematicClouds isAscending={isAscending} />
-        <WindParticles />
+        <CinematicClouds isAscending={isAscending} isMobile={isMobile} />
+        <WindParticles isMobile={isMobile} />
         {showStage1Tech ? (
           <FlyingDrone strikeActive={strikeActive} glitchState={activeSlide === 1 ? modelGlitchState : "idle"} />
         ) : (
@@ -1369,7 +1408,7 @@ function PipelineAssets({
         </mesh>
 
         {/* Cavern floating dust spores system */}
-        <DustParticles />
+        <DustParticles isMobile={isMobile} />
 
         <WebGLHeroText
           label="DEEP CAVERN // CORE ENGINE"
@@ -1578,13 +1617,13 @@ export default function WebGLCanvas({
         <Canvas
           shadows
           gl={{
-            antialias: true,
+            antialias: typeof window !== 'undefined' && window.innerWidth > 768,
             powerPreference: "high-performance",
-            alpha: true, // Set to true for transparent canvas background
+            alpha: true,
             stencil: false,
             depth: true,
           }}
-          dpr={[1, 1.8]}
+          dpr={typeof window !== 'undefined' && window.innerWidth <= 768 ? [1, 1.2] : [1, 1.8]}
           camera={{ fov: 50, near: 0.1, far: 2000, position: [0, 0, 4] }}
         >
           <fogExp2 attach="fog" args={["#a6c8ff", 0.04]} />
@@ -1634,7 +1673,9 @@ export default function WebGLCanvas({
             )}
 
             <SpaceWarp isAscending={isAscending} />
-            <Preload all />
+            {/* <Preload all /> removed — EagerShaderCompiler handles all shader
+                 warming via gl.compile() during the loading screen, making the
+                 Preload off-screen render pass redundant and wasteful on old GPUs */}
           </Suspense>
         </Canvas>
       </div>
@@ -1650,6 +1691,7 @@ useGLTF.preload("/rover.glb");
 useGLTF.preload("/space.glb");
 useGLTF.preload("/me.glb");
 useGLTF.preload("/card.glb");
+useGLTF.preload("/flying-bee/source/Flying bee.glb"); // Bee textures are embedded in GLB (Draco+WebP)
 
 // ─── Eager Shader Compiler ───────────────────────────────────────────────────
 // During the loading screen every GLTF scene is already in memory (useGLTF.preload

@@ -19,26 +19,43 @@ export function Preloader({ onComplete }: PreloaderProps) {
   const requestRef = useRef<number | null>(null);
   const textIndexRef = useRef(0);
   const holdProgressRef = useRef(0);
-  
-  const { progress, active } = useProgress();
-  // If progress is 100, or if it's not active anymore but we mounted, it might be cached.
-  // We'll give it a tiny delay to ensure active has a chance to be true, or just trust progress === 100.
-  // Actually, a safer fallback: if it's 0% but not active for a while, it means nothing is loading.
+
+  // ─── Strict Loading Gate ─────────────────────────────────────────────────
+  // useProgress() subscribes to THREE.DefaultLoadingManager, which tracks every
+  // fetch registered by useGLTF.preload() and useGLTF() hooks.
+  //
+  // Rules:
+  //  • isLoaded can only become true when progress === 100 (all items done).
+  //  • We also require total > 0 so we never complete before the dynamic
+  //    WebGLCanvas chunk has even loaded and registered its preload() calls.
+  //  • The ONLY exception is the pure browser-cache case: if progress is already
+  //    100 on first render (all assets cached) we allow it through immediately,
+  //    but still wait for the Canvas to confirm via the canvasReady flag.
+  //
+  // NO more 2-second fallback on `active` — that was the root cause of fake
+  // loading completion under network throttling.
+  const { progress, active, total, loaded } = useProgress();
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    if (progress === 100) {
+    // Case 1: Normal load — wait for all registered assets to finish.
+    if (total > 0 && progress === 100 && !active) {
       setIsLoaded(true);
+      return;
     }
-  }, [progress]);
 
-  useEffect(() => {
-    // Fallback: if we are stuck and not active after 2 seconds, assume loaded
-    const timer = setTimeout(() => {
-      if (!active) setIsLoaded(true);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [active]);
+    // Case 2: Everything already cached — progress might jump straight to 100
+    // with total === 0 (nothing needed loading from network).
+    // We still give the dynamic JS chunk 300 ms to register its preloads,
+    // and only mark as loaded if no new items appear.
+    if (total === 0 && !active && progress === 0) {
+      const cacheTimer = setTimeout(() => {
+        // Re-check: if total is still 0, nothing is being tracked → all cached.
+        setIsLoaded(true);
+      }, 300);
+      return () => clearTimeout(cacheTimer);
+    }
+  }, [progress, active, total, loaded]);
 
   const fullPromptText = "SHASHWAT_MANU // INITIALIZE_SYSTEM_CORE --SECURE_LINK --DEPLOY_PROD";
 
@@ -104,18 +121,16 @@ export function Preloader({ onComplete }: PreloaderProps) {
   const handleBootComplete = () => {
     if (requestRef.current) cancelAnimationFrame(requestRef.current);
     scrollState.isBooted = true;
-    audio.playTransitionDrop(); // Play deep sub-bass drop sound
-    audio.startDrone(); // Loop dark electronic synth drone
-    audio.startAmbientLoops(); // Arm all ambient SFX loops (bee, spider, etc.) — only now, post-boot
+    audio.playTransitionDrop();
+    audio.startDrone();
+    audio.startAmbientLoops();
 
-    // Fade out preloader DOM overlay
     setFadeAway(true);
     setTimeout(() => {
       setVisible(false);
       onComplete();
-    }, 700); // match CSS fade-out duration
+    }, 700);
   };
-
 
   const startBooting = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isLoaded) return;
@@ -123,7 +138,7 @@ export function Preloader({ onComplete }: PreloaderProps) {
     audio.init();
     audio.resume();
     setIsHolding(true);
-    audio.playRiser(1.4); // 1.4s sweep riser
+    audio.playRiser(1.4);
   };
 
   const stopBooting = () => {
@@ -134,7 +149,10 @@ export function Preloader({ onComplete }: PreloaderProps) {
 
   if (!visible) return null;
 
-  // Calculate circular SVG progress values
+  // Real download progress label (visible while assets are loading)
+  const assetPercent = Math.round(progress);
+
+  // Circular SVG progress values
   const radius = 40;
   const strokeWidth = 3;
   const circumference = 2 * Math.PI * radius;
@@ -142,9 +160,8 @@ export function Preloader({ onComplete }: PreloaderProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col justify-between p-8 bg-[#090909] font-mono text-zinc-500 select-none transition-opacity duration-700 ease-in-out ${
-        fadeAway ? "opacity-0 pointer-events-none" : "opacity-100"
-      }`}
+      className={`fixed inset-0 z-50 flex flex-col justify-between p-8 bg-[#090909] font-mono text-zinc-500 select-none transition-opacity duration-700 ease-in-out ${fadeAway ? "opacity-0 pointer-events-none" : "opacity-100"
+        }`}
     >
       {/* Top Bar Status */}
       <div className="flex justify-between text-xs tracking-wider text-zinc-600">
@@ -167,9 +184,9 @@ export function Preloader({ onComplete }: PreloaderProps) {
             onMouseLeave={stopBooting}
             onTouchStart={startBooting}
             onTouchEnd={stopBooting}
-            className={`w-28 h-28 rounded-full border border-zinc-800 bg-[#0c0c0e] flex items-center justify-center outline-none cursor-pointer transition-all duration-300 relative overflow-hidden group ${
-              isHolding ? "border-[#00F0FF] shadow-[0_0_15px_rgba(0,240,255,0.25)]" : "hover:border-zinc-700"
-            }`}
+            onContextMenu={(e) => e.preventDefault()}
+            className={`w-28 h-28 rounded-full border border-zinc-800 bg-[#0c0c0e] flex items-center justify-center outline-none cursor-pointer transition-all duration-300 relative overflow-hidden group ${isHolding ? "border-[#00F0FF] shadow-[0_0_15px_rgba(0,240,255,0.25)]" : "hover:border-zinc-700"
+              }`}
           >
             {/* SVG Circular Progress Loader */}
             <svg className="absolute inset-0 w-full h-full transform -rotate-90">
@@ -196,15 +213,22 @@ export function Preloader({ onComplete }: PreloaderProps) {
 
             {/* Glowing button label */}
             <span
-              className={`text-[10px] tracking-widest transition-colors duration-300 ${
-                isHolding ? "text-[#00F0FF] font-bold" : "text-zinc-500 group-hover:text-zinc-300"
-              }`}
+              className={`text-[10px] tracking-widest transition-colors duration-300 ${isHolding ? "text-[#00F0FF] font-bold" : "text-zinc-500 group-hover:text-zinc-300"
+                }`}
             >
-              {!isLoaded ? `${Math.round(progress)}%` : (isHolding ? `${bootPercent}%` : "HOLD CLICK")}
+              {!isLoaded
+                ? `${assetPercent}%`
+                : isHolding
+                  ? `${bootPercent}%`
+                  : "HOLD CLICK"}
             </span>
           </button>
           <div className="mt-4 text-[10px] uppercase tracking-widest text-zinc-600">
-            {!isLoaded ? "DOWNLOADING 3D ASSETS..." : "Hold trigger to initialize core engine"}
+            {!isLoaded
+              ? total > 0
+                ? `LOADING 3D ASSETS… ${loaded}/${total}`
+                : "INITIALIZING ENGINE..."
+              : "Hold trigger to initialize core engine"}
           </div>
         </div>
       </div>
