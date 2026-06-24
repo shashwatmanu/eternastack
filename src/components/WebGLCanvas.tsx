@@ -540,18 +540,40 @@ function WebGLHeroText({
 }
 
 // Soft drifting wind/cloud particles representing sky atmospheric details for Stage 1
+// function CinematicClouds({ isAscending }: { isAscending?: boolean }) {
+//   if (isAscending) return null;
+//   return (
+//     <group position={[0, 10, -12]}>
+//       {/* <Clouds material={THREE.MeshLambertMaterial}> */}
+//       <Clouds material={THREE.MeshBasicMaterial}>
+//         <Cloud seed={1} segments={40} bounds={[15, 3, 3]} volume={15} color="#e0e8f5" position={[0, 0, 0]} speed={0.1} opacity={0.5} />
+//         <Cloud seed={2} segments={30} bounds={[12, 3, 3]} volume={12} color="#c5d8f7" position={[-10, 3, -5]} speed={0.15} opacity={0.3} />
+//         <Cloud seed={3} segments={30} bounds={[12, 3, 3]} volume={12} color="#dbe5f7" position={[10, 2, -8]} speed={0.12} opacity={0.3} />
+//       </Clouds>
+//     </group>
+//   );
+// }
+// Soft drifting wind/cloud particles representing sky atmospheric details for Stage 1
 function CinematicClouds({ isAscending }: { isAscending?: boolean }) {
   if (isAscending) return null;
   return (
-    <group position={[0, 10, -12]}>
-      <Clouds material={THREE.MeshLambertMaterial}>
-        <Cloud seed={1} segments={40} bounds={[15, 3, 3]} volume={15} color="#e0e8f5" position={[0, 0, 0]} speed={0.1} opacity={0.5} />
-        <Cloud seed={2} segments={30} bounds={[12, 3, 3]} volume={12} color="#c5d8f7" position={[-10, 3, -5]} speed={0.15} opacity={0.3} />
-        <Cloud seed={3} segments={30} bounds={[12, 3, 3]} volume={12} color="#dbe5f7" position={[10, 2, -8]} speed={0.12} opacity={0.3} />
+    <group position={[0, 0, 0]}>
+      <Clouds>
+        {/* EDIT THE SECOND NUMBER IN THE position={[X, Y, Z]} ARRAYS BELOW: */}
+
+        {/* Center Cloud (Currently Y = 1.8) -> Try 2.2, 2.5, etc. to lift it higher */}
+        <Cloud seed={1} segments={30} bounds={[8, 1, 1]} volume={6} color="#e0e8f5" position={[0, 5, -3.5]} speed={0.1} opacity={0.35} />
+
+        {/* Left Cloud (Currently Y = 2.2) -> Try 2.6, 2.8, etc. */}
+        <Cloud seed={2} segments={20} bounds={[6, 1, 1]} volume={4} color="#c5d8f7" position={[-4.5, 3, -4]} speed={0.15} opacity={0.2} />
+
+        {/* Right Cloud (Currently Y = 2.0) -> Try 2.4, 2.7, etc. */}
+        <Cloud seed={3} segments={20} bounds={[6, 1, 1]} volume={4} color="#dbe5f7" position={[4.5, 4, -4]} speed={0.12} opacity={0.2} />
       </Clouds>
     </group>
   );
 }
+
 
 function WindParticles() {
   return (
