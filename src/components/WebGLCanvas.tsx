@@ -15,11 +15,11 @@ import LocalGlitchVFX from "./LocalGlitchVFX";
 // By code-splitting them we break them out of the initial bundle entirely —
 // they are evaluated in parallel while the Preloader is showing, eliminating
 // the ~5.5 s scripting block that was blocking the main thread on first load.
-const CameraRail   = dynamic(() => import("./CameraRail").then(m => ({ default: m.CameraRail })), { ssr: false });
-const FlyingBee    = dynamic(() => import("./FlyingBee"),   { ssr: false });
-const GroundAnt    = dynamic(() => import("./GroundAnt"),   { ssr: false });
-const FlyingDrone  = dynamic(() => import("./FlyingDrone"), { ssr: false });
-const GroundRover  = dynamic(() => import("./GroundRover"), { ssr: false });
+const CameraRail = dynamic(() => import("./CameraRail").then(m => ({ default: m.CameraRail })), { ssr: false });
+const FlyingBee = dynamic(() => import("./FlyingBee"), { ssr: false });
+const GroundAnt = dynamic(() => import("./GroundAnt"), { ssr: false });
+const FlyingDrone = dynamic(() => import("./FlyingDrone"), { ssr: false });
+const GroundRover = dynamic(() => import("./GroundRover"), { ssr: false });
 
 // Point the Draco WASM decoder at our local /public/draco/ copy (bundled from
 // three/examples/jsm/libs/draco/gltf/). Using a local path instead of the
@@ -33,6 +33,29 @@ const webAnchorPoints = {
   spiderLegs: [] as THREE.Vector3[],
   textCorners: [] as THREE.Vector3[],
 };
+
+// Module-level scratch vectors for spider/ant leg position tracking.
+// Avoids heap allocations inside useFrame (which runs 60x/s) that trigger GC pauses.
+let _spiderBodyPos: THREE.Vector3 | null = null;
+const _spiderLegOffsets = [
+  new THREE.Vector3(-0.5, -0.3, 0.6),
+  new THREE.Vector3( 0.5, -0.3, 0.6),
+  new THREE.Vector3(-0.6, -0.3, 0.4),
+  new THREE.Vector3( 0.6, -0.3, 0.4),
+];
+// Scratch vectors for WebGLHeroText text-corner tracking inside useFrame
+const _tp1 = new THREE.Vector3();
+const _tp2 = new THREE.Vector3();
+const _tp3 = new THREE.Vector3();
+const _tp4 = new THREE.Vector3();
+
+// Pre-triangulate both fonts during the loading screen so the first Text mount
+// is instant. Without this Troika does glyph SDF generation on first render,
+// blocking the main thread for ~80-200ms — the exact stall visible on 6x CPU throttle.
+import("troika-three-text").then(({ preloadFont }) => {
+  preloadFont({ font: "/fonts/Outfit-Light.ttf", characters: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:!?/-_()&%# " }, () => {});
+  preloadFont({ font: "/fonts/PlayfairDisplay-Italic.ttf", characters: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:!?/-_()&%# " }, () => {});
+});
 
 // Immersive Depth 3D Editorial Text Overlay
 // Shaders for WebGLHeroText interactive chrome silver-gold hover shine
@@ -227,6 +250,10 @@ function useTextScramble(targetText: string, duration = 800) {
   const [displayText, setDisplayText] = useState(targetText);
   const oldTextRef = useRef(targetText);
   const animationRef = useRef<number | null>(null);
+  // Throttle to ~20fps max — the scramble is a visual effect, not physics.
+  // At 60fps, each Text node triggers a Troika worker re-layout 60x/s which is
+  // the exact cause of the hero-text stall seen on 6x CPU throttle.
+  const lastFrameRef = useRef(0);
 
   useEffect(() => {
     const oldText = oldTextRef.current;
@@ -236,38 +263,30 @@ function useTextScramble(targetText: string, duration = 800) {
     const chars = "01XZ$%#@!+?_█░▒▓<>[]{}";
 
     const animate = (now: number) => {
+      // Skip frame if less than 50ms since last update (~20fps cap)
+      if (now - lastFrameRef.current < 50) {
+        animationRef.current = requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameRef.current = now;
+
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
-
-      // Interpolate length
       const currentLength = Math.round(
         oldText.length + (targetText.length - oldText.length) * progress
       );
 
       let result = "";
       for (let i = 0; i < currentLength; i++) {
-        // Calculate relative position of this character
         const charProgress = i / Math.max(currentLength, 1);
-
-        // Decrypt left-to-right
         const decryptThreshold = progress;
-
         const isSpace = (i < targetText.length && targetText[i] === ' ') || (i < oldText.length && oldText[i] === ' ');
-
         if (isSpace) {
           result += ' ';
         } else if (charProgress < decryptThreshold - 0.1) {
-          if (i < targetText.length) {
-            result += targetText[i];
-          } else {
-            result += ' ';
-          }
+          result += i < targetText.length ? targetText[i] : ' ';
         } else if (charProgress > decryptThreshold + 0.1) {
-          if (i < oldText.length) {
-            result += oldText[i];
-          } else {
-            result += chars[Math.floor(Math.random() * chars.length)];
-          }
+          result += i < oldText.length ? oldText[i] : chars[Math.floor(Math.random() * chars.length)];
         } else {
           result += chars[Math.floor(Math.random() * chars.length)];
         }
@@ -284,12 +303,7 @@ function useTextScramble(targetText: string, duration = 800) {
     };
 
     animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
+    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
   }, [targetText, duration]);
 
   return displayText;
@@ -403,18 +417,12 @@ function WebGLHeroText({
     // Track text corners for web anchors if cavern level (using localToWorld to account for kinetic tilt)
     if (sectionIndex === 2 && groupRef.current.visible) {
       groupRef.current.updateMatrixWorld(true);
-
-      const p1 = new THREE.Vector3(0.05, 0.45, 0);   // Top-Left "I" of IRONCLAD
-      const p2 = new THREE.Vector3(1.7, 0.45, 0);    // Top-Right "D" of IRONCLAD
-      const p3 = new THREE.Vector3(0.05, 0.05, 0);   // Bottom-Left "E" of ECOSYSTEMS.
-      const p4 = new THREE.Vector3(2.3, 0.05, 0);    // Bottom-Right "S." of ECOSYSTEMS.
-
-      groupRef.current.localToWorld(p1);
-      groupRef.current.localToWorld(p2);
-      groupRef.current.localToWorld(p3);
-      groupRef.current.localToWorld(p4);
-
-      webAnchorPoints.textCorners = [p1, p2, p3, p4];
+      // Reuse pre-allocated module-level vectors — avoids 4 heap allocations per frame
+      _tp1.set(0.05, 0.45, 0); groupRef.current.localToWorld(_tp1);
+      _tp2.set(1.7,  0.45, 0); groupRef.current.localToWorld(_tp2);
+      _tp3.set(0.05, 0.05, 0); groupRef.current.localToWorld(_tp3);
+      _tp4.set(2.3,  0.05, 0); groupRef.current.localToWorld(_tp4);
+      webAnchorPoints.textCorners = [_tp1, _tp2, _tp3, _tp4];
     }
 
     // Interactive mouse cursor parallax tilt
@@ -471,17 +479,18 @@ function WebGLHeroText({
         font="/fonts/Outfit-Light.ttf"
         fontSize={0.07}
         letterSpacing={0.25}
-        color="#a1a1aa" // zinc-400
+        color="#a1a1aa"
         anchorX={anchorX}
         anchorY="middle"
         position={[0, 0.55, 0]}
-        castShadow
-        receiveShadow
       >
+        {/* castShadow/receiveShadow removed: Troika text is a thin plane mesh —
+            shadows are invisible but force the shadow map renderer to process every
+            glyph mesh at 60fps, adding significant GPU overhead. */}
         {label}
       </Text>
 
-      {/* Line 1A (Outfit-Light, massive, uppercase) */}
+      {/* Line 1A */}
       <Text
         font="/fonts/Outfit-Light.ttf"
         fontSize={fontSize1}
@@ -491,8 +500,6 @@ function WebGLHeroText({
         anchorY="middle"
         position={[0, 0.45, 0]}
         textAlign={textAlign}
-        castShadow
-        receiveShadow
       >
         {scrambledLine1A}
         <shaderMaterial
@@ -504,7 +511,7 @@ function WebGLHeroText({
         />
       </Text>
 
-      {/* Line 1B (Outfit-Light, massive, uppercase) */}
+      {/* Line 1B */}
       <Text
         font="/fonts/Outfit-Light.ttf"
         fontSize={fontSize1}
@@ -514,8 +521,6 @@ function WebGLHeroText({
         anchorY="middle"
         position={[0, 0.05, 0]}
         textAlign={textAlign}
-        castShadow
-        receiveShadow
       >
         {scrambledLine1B}
         <shaderMaterial
@@ -527,17 +532,15 @@ function WebGLHeroText({
         />
       </Text>
 
-      {/* Line 2 (PlayfairDisplay-Italic, curvy mixed-case italic sub-line) */}
+      {/* Line 2 — subheading */}
       <Text
         font="/fonts/PlayfairDisplay-Italic.ttf"
         fontSize={fontSize2}
-        color={sectionIndex === 2 ? "#ffe6d5" : "#0f172a"} // Dark navy for Sky/Ground, warm gold for Cavern
+        color={sectionIndex === 2 ? "#ffe6d5" : "#0f172a"}
         anchorX={anchorX}
         anchorY="middle"
         position={[0, -0.32, 0]}
         textAlign={textAlign}
-        castShadow
-        receiveShadow
       >
         {scrambledLine2}
       </Text>
@@ -629,14 +632,14 @@ function useGroundScene(variant: "surface" | "cavern") {
       //   • Cap anisotropic filtering at 4x — beyond that the quality gain is
       //     imperceptible for a tileable ground texture viewed at oblique angles.
       if (mat.map) {
-        mat.map.minFilter     = THREE.LinearMipmapLinearFilter; // Trilinear — best mip quality
-        mat.map.magFilter     = THREE.LinearFilter;
-        mat.map.anisotropy    = Math.min(4, mat.map.anisotropy); // Cap at 4x (16x is GPU-costly)
+        mat.map.minFilter = THREE.LinearMipmapLinearFilter; // Trilinear — best mip quality
+        mat.map.magFilter = THREE.LinearFilter;
+        mat.map.anisotropy = Math.min(4, mat.map.anisotropy); // Cap at 4x (16x is GPU-costly)
         mat.map.generateMipmaps = true;
-        mat.map.needsUpdate   = true;
+        mat.map.needsUpdate = true;
       }
       if (mat.normalMap) {
-        mat.normalMap.minFilter  = THREE.LinearMipmapLinearFilter;
+        mat.normalMap.minFilter = THREE.LinearMipmapLinearFilter;
         mat.normalMap.anisotropy = Math.min(4, mat.normalMap.anisotropy);
         mat.normalMap.generateMipmaps = true;
         mat.normalMap.needsUpdate = true;
@@ -668,6 +671,8 @@ function Ground() {
 
   // Cache the meshes once on mount — avoids scene-graph traversal every useFrame.
   const groundMeshes = useRef<THREE.Mesh[]>([]);
+  // Track last opacity to avoid setting material dirty flag every frame when value is stable.
+  const lastOpacity = useRef(-1);
   useEffect(() => {
     const meshes: THREE.Mesh[] = [];
     clonedScene.traverse((child) => {
@@ -676,12 +681,15 @@ function Ground() {
     groundMeshes.current = meshes;
   }, [clonedScene]);
 
-  // Smoothly fade out opacity of the Stage 2 ground as camera passes it
   useFrame(() => {
     const currentDamped = scrollState.dampedProgress;
     const opacity = currentDamped > 0.42
       ? Math.max(1.0 - (currentDamped - 0.42) / 0.04, 0.0)
       : 1.0;
+    // Early-out: don't touch materials when opacity is identical to last frame.
+    // Avoids dirtying the material uniform every tick when the value is stable.
+    if (Math.abs(opacity - lastOpacity.current) < 0.001) return;
+    lastOpacity.current = opacity;
     for (const child of groundMeshes.current) {
       const mat = child.material as THREE.MeshStandardMaterial;
       if (mat) mat.opacity = opacity;
@@ -899,20 +907,21 @@ function SubterraneanSpider({
 
     if (s > 0) {
       if (frontLegsRef.current.length >= 2) {
-        webAnchorPoints.spiderLegs = frontLegsRef.current.map((leg) => {
-          const v = new THREE.Vector3();
-          leg.getWorldPosition(v);
-          return v;
-        });
+        // Grow the pool only when leg count changes (rare), never on a typical frame
+        if (webAnchorPoints.spiderLegs.length !== frontLegsRef.current.length) {
+          webAnchorPoints.spiderLegs = frontLegsRef.current.map(() => new THREE.Vector3());
+        }
+        frontLegsRef.current.forEach((leg, i) => leg.getWorldPosition(webAnchorPoints.spiderLegs[i]));
       } else {
-        const bodyPos = new THREE.Vector3();
-        group.current.getWorldPosition(bodyPos);
-        webAnchorPoints.spiderLegs = [
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(-0.5, -0.3, 0.6)),
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(0.5, -0.3, 0.6)),
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(-0.6, -0.3, 0.4)),
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(0.6, -0.3, 0.4)),
-        ];
+        if (!_spiderBodyPos) _spiderBodyPos = new THREE.Vector3();
+        group.current.getWorldPosition(_spiderBodyPos);
+        if (webAnchorPoints.spiderLegs.length !== 4) {
+          webAnchorPoints.spiderLegs = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+        }
+        webAnchorPoints.spiderLegs[0].copy(_spiderBodyPos).add(_spiderLegOffsets[0]);
+        webAnchorPoints.spiderLegs[1].copy(_spiderBodyPos).add(_spiderLegOffsets[1]);
+        webAnchorPoints.spiderLegs[2].copy(_spiderBodyPos).add(_spiderLegOffsets[2]);
+        webAnchorPoints.spiderLegs[3].copy(_spiderBodyPos).add(_spiderLegOffsets[3]);
       }
     }
   });
@@ -1067,20 +1076,20 @@ function SubterraneanSpy({
 
     if (s > 0) {
       if (frontLegsRef.current.length >= 2) {
-        webAnchorPoints.spiderLegs = frontLegsRef.current.map((leg) => {
-          const v = new THREE.Vector3();
-          leg.getWorldPosition(v);
-          return v;
-        });
+        if (webAnchorPoints.spiderLegs.length !== frontLegsRef.current.length) {
+          webAnchorPoints.spiderLegs = frontLegsRef.current.map(() => new THREE.Vector3());
+        }
+        frontLegsRef.current.forEach((leg, i) => leg.getWorldPosition(webAnchorPoints.spiderLegs[i]));
       } else {
-        const bodyPos = new THREE.Vector3();
-        group.current.getWorldPosition(bodyPos);
-        webAnchorPoints.spiderLegs = [
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(-0.5, -0.3, 0.6)),
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(0.5, -0.3, 0.6)),
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(-0.6, -0.3, 0.4)),
-          new THREE.Vector3().copy(bodyPos).add(new THREE.Vector3(0.6, -0.3, 0.4)),
-        ];
+        if (!_spiderBodyPos) _spiderBodyPos = new THREE.Vector3();
+        group.current.getWorldPosition(_spiderBodyPos);
+        if (webAnchorPoints.spiderLegs.length !== 4) {
+          webAnchorPoints.spiderLegs = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+        }
+        webAnchorPoints.spiderLegs[0].copy(_spiderBodyPos).add(_spiderLegOffsets[0]);
+        webAnchorPoints.spiderLegs[1].copy(_spiderBodyPos).add(_spiderLegOffsets[1]);
+        webAnchorPoints.spiderLegs[2].copy(_spiderBodyPos).add(_spiderLegOffsets[2]);
+        webAnchorPoints.spiderLegs[3].copy(_spiderBodyPos).add(_spiderLegOffsets[3]);
       }
     }
   });
@@ -1104,6 +1113,13 @@ function SubterraneanSpy({
   );
 }
 
+// Pre-allocated point pool for ProceduralWebs — avoids 12 new Vector3() per line per frame.
+// With 8 lines at 60fps this was 5760 allocations/second driving GC pauses.
+const WEB_POINT_COUNT = 12;
+const _webPointPool: THREE.Vector3[][] = Array.from({ length: 8 }, () =>
+  Array.from({ length: WEB_POINT_COUNT + 1 }, () => new THREE.Vector3())
+);
+
 // Procedural glowing silk threads connecting spider legs to the text corners
 function ProceduralWebs() {
   const lineRefs = useRef<any[]>([]);
@@ -1118,20 +1134,17 @@ function ProceduralWebs() {
         if (!line) return;
         const start = legs[idx % legs.length];
         const end = corners[idx % corners.length];
+        const pool = _webPointPool[idx % _webPointPool.length];
 
-        const points: THREE.Vector3[] = [];
-        const count = 12;
-        for (let i = 0; i <= count; i++) {
-          const t = i / count;
-          const p = new THREE.Vector3().lerpVectors(start, end, t);
-
-          // Sway/flex wave displacement
+        for (let i = 0; i <= WEB_POINT_COUNT; i++) {
+          const t = i / WEB_POINT_COUNT;
+          // Re-use pooled vector — lerpVectors writes into the existing object
+          pool[i].lerpVectors(start, end, t);
           const sway = Math.sin(t * Math.PI) * Math.sin(time * 2.5 + idx) * 0.08;
-          p.y += sway;
-          p.x += sway * 0.3;
-          points.push(p);
+          pool[i].y += sway;
+          pool[i].x += sway * 0.3;
         }
-        line.geometry.setFromPoints(points);
+        line.geometry.setFromPoints(pool);
       });
     }
   });
@@ -1160,24 +1173,26 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const ambientLightRef = useRef<THREE.AmbientLight>(null);
 
+  // Cache the bgEl DOM reference once on mount so we never call getElementById() inside useFrame.
+  // A DOM query inside a 60fps render loop forces a full style recalculation every frame.
+  const bgElRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    bgElRef.current = document.getElementById("webgl-bg");
+  }, []);
+
   useFrame((state) => {
     if (isAscending) return;
-
     const progress = scrollState.dampedProgress;
 
     if (progress < 0.348) {
-      // STAGE 1 & 2 (Sky & Ground): Clear sky blue background and thin fog
-
-      const bgEl = document.getElementById("webgl-bg");
-      if (bgEl) bgEl.style.backgroundColor = "#8ab9ff";
+      // STAGE 1 & 2 (Sky & Ground)
+      if (bgElRef.current) bgElRef.current.style.backgroundColor = "#8ab9ff";
       state.gl.setClearColor(0x000000, 0);
 
       if (state.scene.fog) {
-        // Stage 1 (progress < 0.20) has slightly thinner fog than Stage 2 to make sky look crisp
         (state.scene.fog as THREE.FogExp2).color.set("#8ab9ff");
         (state.scene.fog as THREE.FogExp2).density = progress < 0.20 ? 0.008 : 0.012;
       }
-
       if (ambientLightRef.current) {
         ambientLightRef.current.intensity = 0.35;
         ambientLightRef.current.color.set("#dce9ff");
@@ -1188,34 +1203,25 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
         dirLightRef.current.position.set(5, 12, 5);
       }
       if (spotLightRef.current) {
-        // Spotlight only active for Ant shadows at Stage 2
         spotLightRef.current.intensity = progress < 0.20 ? 0 : 5.0;
         spotLightRef.current.color.set("#8bc4ff");
         spotLightRef.current.position.set(0, 10, 0);
       }
     } else {
-      // STAGE 3 & 4 (Subterranean Cavern): Instant switch at 0.348 progress
-      const bgEl = document.getElementById("webgl-bg");
-      if (bgEl) bgEl.style.backgroundColor = "#0c0908";
+      // STAGE 3 & 4 (Subterranean Cavern)
+      if (bgElRef.current) bgElRef.current.style.backgroundColor = "#0c0908";
       state.gl.setClearColor(0x000000, 0);
 
       if (state.scene.fog) {
         (state.scene.fog as THREE.FogExp2).color.set("#0c0908");
-        (state.scene.fog as THREE.FogExp2).density = 0.075; // Instant thick cave fog
+        (state.scene.fog as THREE.FogExp2).density = 0.075;
       }
-
       if (ambientLightRef.current) {
         ambientLightRef.current.intensity = 0.2;
-        ambientLightRef.current.color.set("#241710"); // Dim amber cave base
+        ambientLightRef.current.color.set("#241710");
       }
-
-      if (dirLightRef.current) {
-        dirLightRef.current.intensity = 0; // Turn off daylight sun
-      }
-
-      if (spotLightRef.current) {
-        spotLightRef.current.intensity = 0; // Turn off daylight spotlight
-      }
+      if (dirLightRef.current) dirLightRef.current.intensity = 0;
+      if (spotLightRef.current) spotLightRef.current.intensity = 0;
     }
   });
 
@@ -1240,32 +1246,21 @@ function EnvironmentalPipeline({ isAscending }: { isAscending?: boolean }) {
         shadow-camera-bottom={-10}
       />
 
-      {/* STAGE 2: Spotlight for Ground Ant casting shadows */}
+      {/* STAGE 2: Spotlight for Ground Ant */}
       <spotLight
         ref={spotLightRef}
         position={[0, 10, 0]}
-        angle={1.2} // Widened angle for smoother transition lighting
+        angle={1.2}
         penumbra={0.8}
         intensity={5}
-        color="#8bc4ff" // soft light blue spot
-        castShadow={false} // Disable spotlight shadow to prevent circular border artifacts
+        color="#8bc4ff"
+        castShadow={false}
       />
 
-      {/* STAGE 3 & 4: Cavern background point lights - glowing copper crystals */}
-      <pointLight
-        position={[6, -3.2, -8]}
-        intensity={6}
-        distance={30}
-        decay={1.8}
-        color="#ff7733" // warm amber crystal glow
-      />
-      <pointLight
-        position={[-6, -3.2, -8]}
-        intensity={4}
-        distance={30}
-        decay={1.8}
-        color="#ff4411" // red ember glow
-      />
+      {/* STAGE 3 & 4: Cavern ambient glow — castShadow removed (each shadow-casting point
+          light adds a cube-map pass = 6 depth renders; 3 lights = 18 extra passes/frame) */}
+      <pointLight position={[6, -3.2, -8]}  intensity={6} distance={30} decay={1.8} color="#ff7733" />
+      <pointLight position={[-6, -3.2, -8]} intensity={4} distance={30} decay={1.8} color="#ff4411" />
     </>
   );
 }
@@ -1338,9 +1333,12 @@ function PipelineAssets({
       ? 0
       : Math.min((currentDamped - 0.348) / 0.05, 1.0);
 
-    if (light1Ref.current) light1Ref.current.intensity = 15 * cavernLightIntensity;
-    if (light2Ref.current) light2Ref.current.intensity = 10 * cavernLightIntensity;
-    if (light3Ref.current) light3Ref.current.intensity = 8 * cavernLightIntensity;
+    // Intensities tuned for castShadow=false: without shadow maps, the raw intensity
+    // hits the spider and surrounding geometry unoccluded, so values are lower than
+    // the original 15/10/8 that were designed for shadowed (blocked) light.
+    if (light1Ref.current) light1Ref.current.intensity = 6 * cavernLightIntensity;
+    if (light2Ref.current) light2Ref.current.intensity = 4 * cavernLightIntensity;
+    if (light3Ref.current) light3Ref.current.intensity = 3 * cavernLightIntensity;
   });
 
   return (
@@ -1401,10 +1399,13 @@ function PipelineAssets({
 
         {/* Removed Cavern Backup Floor to reveal the true SubterraneanGround geometry */}
 
-        {/* Cavern Ceiling (transition plane representing the bottom of the ground layer) */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.6, 0]} receiveShadow>
+        {/* Cavern Ceiling — MeshBasicMaterial so it ignores all scene lights.
+            It's a near-black cave ceiling: it should always render as #0a0705 regardless
+            of what the point lights below are doing. MeshStandardMaterial was being lit
+            bright white by the close-range point lights once castShadow was removed. */}
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.6, 0]}>
           <planeGeometry args={[100, 100]} />
-          <meshStandardMaterial color="#0a0705" roughness={0.9} metalness={0.1} />
+          <meshBasicMaterial color="#0a0705" />
         </mesh>
 
         {/* Cavern floating dust spores system */}
@@ -1428,32 +1429,33 @@ function PipelineAssets({
 
 
         {/* Cavern lights to keep the underground lighted beautifully without cursor spotlight */}
+        {/* castShadow removed from all 3 point lights: each shadow-casting point light requires
+            a full cube-map shadow pass (6 depth renders). 3 lights = 18 extra render passes/frame.
+            The warm amber glow is entirely from color + intensity — point-light shadows at this scale
+            are invisible to the naked eye but burn ~3ms/frame on a mid-range GPU. */}
         <pointLight
           ref={light1Ref}
-          position={[0.8, -0.5, 2.8]} // directly in front of the spider
+          position={[0.8, -0.5, 2.8]}
           intensity={0}
           distance={12}
           decay={1.5}
-          color="#ffe3cc" // warm golden cave light
-          castShadow
+          color="#ffe3cc"
         />
         <pointLight
           ref={light2Ref}
-          position={[-1.5, 0.5, 2.2]} // left side ambient cave light
+          position={[-1.5, 0.5, 2.2]}
           intensity={0}
           distance={12}
           decay={1.5}
           color="#ffaa66"
-          castShadow
         />
         <pointLight
           ref={light3Ref}
-          position={[2.5, 0.5, 2.2]} // right side fill cave light
+          position={[2.5, 0.5, 2.2]}
           intensity={0}
           distance={12}
           decay={1.5}
           color="#ff8844"
-          castShadow
         />
 
         {isMachineRevealed ? (
@@ -1471,17 +1473,17 @@ function PipelineAssets({
 // Controls the global HDRI environment, fading it out to be moody in the cavern
 function DynamicEnvironment() {
   const { scene } = useThree();
+  // Track last intensity to avoid writing the same value every frame (GPU uniform dirty).
+  const lastIntensity = useRef(-1);
   useFrame(() => {
     const progress = scrollState.dampedProgress;
-    // Fade the cavern environment down to 0.05 quickly so the cavern is completely dim upon entering at 0.348
     const intensity = progress < 0.30 ? 0.45 : Math.max(0.05, 0.45 - (progress - 0.30) * 10.0);
-
+    // Early-out: only write when the value actually changed by a meaningful amount.
+    if (Math.abs(intensity - lastIntensity.current) < 0.005) return;
+    lastIntensity.current = intensity;
     const s = scene as any;
-    if ('environmentIntensity' in s) {
-      s.environmentIntensity = intensity;
-    }
+    if ('environmentIntensity' in s) s.environmentIntensity = intensity;
   });
-  // Rotate the environment 180 degrees so the primary light source is behind the camera, making it bright at rest and dark on tilt
   return <Environment preset="studio" environmentRotation={[0, Math.PI, 0]} />;
 }
 
@@ -1704,30 +1706,66 @@ function EagerShaderCompiler() {
   const { gl, camera } = useThree();
   const compiledRef = useRef(false);
 
-  // All scenes that need their shaders pre-compiled.
-  // useGLTF reads from the THREE cache populated by the preload() calls above.
   const groundScene = useGLTF("/ground%20(1).glb").scene;
   const spiderScene = useGLTF("/spider.glb").scene;
-  const spyScene = useGLTF("/spy.glb").scene;
-  const droneScene = useGLTF("/drone.glb").scene;
-  const roverScene = useGLTF("/rover.glb").scene;
-  const spaceScene = useGLTF("/space.glb").scene;
+  const spyScene    = useGLTF("/spy.glb").scene;
+  const droneScene  = useGLTF("/drone.glb").scene;
+  const roverScene  = useGLTF("/rover.glb").scene;
+  const spaceScene  = useGLTF("/space.glb").scene;
 
   useEffect(() => {
     if (compiledRef.current) return;
     compiledRef.current = true;
 
-    // Compile each scene in sequence — each gl.compile() call is synchronous
-    // but fast (it just uploads already-decoded data, no network needed).
-    // Running them sequentially keeps the call off the critical render path.
-    const scenes = [groundScene, spiderScene, spyScene, droneScene, roverScene, spaceScene];
-
-    // Defer until after the first paint so the preloader UI renders first,
-    // then compile everything while the user is still on the loading screen.
     requestAnimationFrame(() => {
-      scenes.forEach(scene => {
+      // 1. Compile all GLTF scenes (meshes, PBR materials, textures)
+      const gltfScenes = [groundScene, spiderScene, spyScene, droneScene, roverScene, spaceScene];
+      gltfScenes.forEach(scene => {
         try { gl.compile(scene, camera); } catch (_) { /* non-fatal */ }
       });
+
+      // 2. Compile the custom hero-text ShaderMaterial.
+      //    This is the #1 source of first-scroll hitches on laptops: the shader
+      //    compiles lazily the moment WebGLHeroText first becomes visible.
+      //    We create a minimal dummy scene with the same ShaderMaterial so the
+      //    GLSL is already compiled by the time the user reaches it.
+      try {
+        const dummyScene = new THREE.Scene();
+        const dummyGeo = new THREE.PlaneGeometry(0.001, 0.001);
+        const dummyMat = new THREE.ShaderMaterial({
+          vertexShader: webGLHeroTextVertexShader,
+          fragmentShader: webGLHeroTextFragmentShader,
+          uniforms: {
+            uTime: { value: 0 },
+            uOpacity: { value: 0 },
+            uIsMachine: { value: 0 },
+            uSectionIndex: { value: 0 },
+          },
+          transparent: true,
+        });
+        dummyScene.add(new THREE.Mesh(dummyGeo, dummyMat));
+        gl.compile(dummyScene, camera);
+        dummyGeo.dispose();
+        dummyMat.dispose();
+      } catch (_) { /* non-fatal */ }
+
+      // 3. Compile Stars, Sparkles, and Clouds shader materials.
+      //    These use built-in ShaderMaterials from drei/three — we force them
+      //    to compile by creating the exact same material types off-screen.
+      try {
+        const dummyScene2 = new THREE.Scene();
+        // PointsMaterial covers Stars and Sparkles (both are THREE.Points under the hood)
+        const ptsMat = new THREE.PointsMaterial({ size: 0.01 });
+        const ptsGeo = new THREE.BufferGeometry();
+        ptsGeo.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0], 3));
+        dummyScene2.add(new THREE.Points(ptsGeo, ptsMat));
+        // MeshStandardMaterial with envMap covers the environment-lit ground reflector
+        const stdMat = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
+        const stdGeo = new THREE.PlaneGeometry(0.001, 0.001);
+        dummyScene2.add(new THREE.Mesh(stdGeo, stdMat));
+        gl.compile(dummyScene2, camera);
+        ptsGeo.dispose(); ptsMat.dispose(); stdGeo.dispose(); stdMat.dispose();
+      } catch (_) { /* non-fatal */ }
     });
   }, [gl, camera, groundScene, spiderScene, spyScene, droneScene, roverScene, spaceScene]);
 

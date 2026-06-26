@@ -100,14 +100,11 @@ export default function GroundRover({
         -1.46 + (Math.random() - 0.5) * 0.15,
         1.4 + (Math.random() - 0.5) * 0.15
       );
-
-      // Posterized, jerky Spider-Verse silhouette splitting in parent space coordinates
-      const stateObj = (group.current as any).__r3f?.state; // Get three-fiber clock state indirectly
-      const time = stateObj ? stateObj.clock.getElapsedTime() : Date.now() / 1000;
+      // Posterized, jerky Spider-Verse silhouette splitting
+      const time = Date.now() / 1000;
       const timeStep = Math.floor(time * 24) / 24;
       const shiftX = Math.sin(timeStep * 50) * 0.08 + (Math.random() - 0.5) * 0.04;
       const shiftY = Math.cos(timeStep * 40) * 0.08 + (Math.random() - 0.5) * 0.04;
-
       if (cyanCloneRef.current) {
         cyanCloneRef.current.position.set(-shiftX, -shiftY, 0);
         cyanCloneRef.current.scale.setScalar(0.25 * (1.0 + Math.sin(timeStep * 30) * 0.05));
@@ -116,17 +113,6 @@ export default function GroundRover({
         magentaCloneRef.current.position.set(shiftX, shiftY, 0);
         magentaCloneRef.current.scale.setScalar(0.25 * (1.0 - Math.sin(timeStep * 30) * 0.05));
       }
-    } else {
-      group.current.position.set(0.8, -1.46, 1.4);
-    }
-
-    // Apply local jitter during glitch transition
-    if (glitchState === "glitching-in" || glitchState === "glitching-out") {
-      group.current.position.set(
-        0.8 + (Math.random() - 0.5) * 0.15,
-        -1.46 + (Math.random() - 0.5) * 0.15,
-        1.4 + (Math.random() - 0.5) * 0.15
-      );
     } else {
       group.current.position.set(0.8, -1.46, 1.4);
     }
